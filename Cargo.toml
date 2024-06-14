@@ -5,12 +5,12 @@ edition = "2021"
 exclude = ["tests"]
 
 [dependencies]
-bitcoin-script = { git = "https://github.com/BitVM/rust-bitcoin-script" }
-bitcoin = { git = "https://github.com/rust-bitcoin/rust-bitcoin", branch = "bitvm", features = ["rand-std"]}
+bitcoin-script = { git = "https://github.com/bitlayer-org/rust-bitcoin-script" }
+bitcoin = { git = "https://github.com/bitlayer-org/rust-bitcoin", branch = "bf-stark", features = ["rand-std"]}
 strum = "0.26"
 strum_macros = "0.26"
 hex = "0.4.3"
-bitcoin-scriptexec = { git = "https://github.com/BitVM/rust-bitcoin-scriptexec/"}
+bitcoin-scriptexec = { git = "https://github.com/bitlayer-org/rust-bitcoin-scriptexec/"}
 serde = { version = "1.0.197", features = ["derive"] }
 num-bigint = "0.4.4"
 num-traits = "0.2.18"
@@ -20,10 +20,10 @@ ark-ec = "0.4.0"
 ark-groth16 = "0.4.0"
 sha2 = "0.10.8"
 tokio = { version = "1.37.0", features = ["full"] }
-esplora-client = { git = "https://github.com/BitVM/rust-esplora-client" }
+esplora-client = { git = "https://github.com/bitlayer-org/rust-esplora-client" }
 serde_json = "1.0.116"
 lazy_static = "1.4.0"
-bitcoin-script-stack = { git = "https://github.com/FairgateLabs/rust-bitcoin-script-stack"}
+bitcoin-script-stack = { git = "https://github.com/bitlayer-org/rust-bitcoin-script-stack"}
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 once_cell = "1.19.0"
@@ -40,11 +40,28 @@ opt-level = 3
 [profile.release]
 lto = true
 
-[patch.crates-io]
-base58check = { git = "https://github.com/rust-bitcoin/rust-bitcoin", branch = "bitvm"}
-bitcoin = { git = "https://github.com/rust-bitcoin/rust-bitcoin", branch = "bitvm"}
-bitcoin_hashes = { git = "https://github.com/rust-bitcoin/rust-bitcoin", branch = "bitvm"}
-bitcoin-internals = { git = "https://github.com/rust-bitcoin/rust-bitcoin", branch = "bitvm"}
-bitcoin-io = { git = "https://github.com/rust-bitcoin/rust-bitcoin", branch = "bitvm"}
-bitcoin-units = { git = "https://github.com/rust-bitcoin/rust-bitcoin", branch = "bitvm"}
+[patch.crates-io.base58ck]
+git = "https://github.com/bitlayer-org/rust-bitcoin.git"
+branch = "bf-stark"
+
+[patch.crates-io.bitcoin]
+git = "https://github.com/bitlayer-org/rust-bitcoin.git"
+branch = "bf-stark"
+
+[patch.crates-io.bitcoin_hashes]
+git = "https://github.com/bitlayer-org/rust-bitcoin.git"
+branch = "bf-stark"
+
+[patch.crates-io.bitcoin-internals]
+git = "https://github.com/bitlayer-org/rust-bitcoin.git"
+branch = "bf-stark"
+
+[patch.crates-io.bitcoin-io]
+git = "https://github.com/bitlayer-org/rust-bitcoin.git"
+branch = "bf-stark"
+
+[patch.crates-io.bitcoin-units]
+git = "https://github.com/bitlayer-org/rust-bitcoin.git"
+branch = "bf-stark"
+
 
