@@ -26,6 +26,35 @@ pub fn fr_push(scalar: ark_bn254::Fr) -> Script {
     }
 }
 
+// [scalar0, scalar1, scalar2 ...]
+// Will compute msm and return the affine point
+// Output Stack: [x,y]
+pub fn msm_script_with_bases(bases: &[ark_bn254::G1Affine]) -> Script {
+    let bases: Vec<ark_ec::short_weierstrass::Projective<ark_bn254::g1::Config>> =
+        bases.iter().map(|&p| p.into()).collect();
+    let len = bases.len();
+    let scalar_mul = G1Projective::scalar_mul();
+
+    script! {
+        for _ in 0..len {
+            { Fr::toaltstack() }
+        }
+        // 1. init the sum=0;
+        {G1Projective::push_zero()}
+        for i in 0..len {
+            // 2. scalar mul
+            { g1_projective_push(bases[i]) }
+            { Fr::fromaltstack() }
+            { scalar_mul.clone() }
+
+            // 3. sum the base
+            { G1Projective::add() }
+        }
+        // convert into Affine
+        { G1Projective::into_affine() }
+    }
+}
+
 // Will compute msm and return the affine point
 // Output Stack: [x,y]
 pub fn msm(bases: &[ark_bn254::G1Affine], scalars: &[ark_bn254::Fr]) -> Script {
@@ -55,8 +84,8 @@ pub fn msm(bases: &[ark_bn254::G1Affine], scalars: &[ark_bn254::Fr]) -> Script {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::bn254::curves::G1Affine;
     use crate::execute_script;
+    use crate::{bn254::curves::G1Affine, execute_script_without_stack_limit};
     use ark_ec::{CurveGroup, VariableBaseMSM};
 
     use ark_std::{end_timer, start_timer, test_rng, UniformRand};
@@ -79,6 +108,40 @@ mod test {
         let start = start_timer!(|| "collect_script");
         let script = script! {
             {super::msm(&bases, &scalars) }
+            { g1_affine_push(expect) }
+            { G1Affine::equalverify() }
+            OP_TRUE
+        };
+        end_timer!(start);
+
+        println!("msm::test_msm_script = {} bytes", script.len());
+        let start = start_timer!(|| "execute_msm_script");
+        let exec_result = execute_script(script);
+        end_timer!(start);
+        assert!(exec_result.success);
+    }
+
+    #[test]
+    fn test_msm_script2() {
+        let k = 1;
+        let n = 1 << k;
+        let rng = &mut test_rng();
+
+        let scalars = (0..n).map(|_| ark_bn254::Fr::rand(rng)).collect::<Vec<_>>();
+
+        let bases = (0..n)
+            .map(|_| ark_bn254::G1Projective::rand(rng).into_affine())
+            .collect::<Vec<_>>();
+
+        let expect = ark_bn254::G1Projective::msm(&bases, &scalars).unwrap();
+        let expect = expect.into_affine();
+
+        let start = start_timer!(|| "collect_script");
+        let script = script! {
+            for scalar in scalars {
+                {fr_push(scalar)}
+            }
+            {super::msm_script_with_bases(&bases) }
             { g1_affine_push(expect) }
             { G1Affine::equalverify() }
             OP_TRUE

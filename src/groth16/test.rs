@@ -5,8 +5,9 @@ use std::io::Write;
 use std::os::macos::raw::stat;
 use std::rc::Rc;
 
-use crate::bn254::curves::G1Projective;
+use crate::bn254::curves::{G1Affine, G1Projective};
 use crate::bn254::fp254impl::Fp254Impl;
+use crate::bn254::fq::Fq;
 use crate::bn254::fr::Fr;
 use crate::bn254::msm::{fr_push, g1_projective_push};
 use crate::groth16::verifier::Verifier;
@@ -110,7 +111,91 @@ fn test_sub_script() {
 }
 
 #[test]
+fn test_groth16_verifier_script_total() {
+    type E = Bn254;
+    let k = 6;
+    let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+    let circuit = DummyCircuit::<<E as Pairing>::ScalarField> {
+        a: Some(<E as Pairing>::ScalarField::rand(&mut rng)),
+        b: Some(<E as Pairing>::ScalarField::rand(&mut rng)),
+        num_variables: 10,
+        num_constraints: 1 << k,
+    };
+    let (pk, vk) = Groth16::<E>::setup(circuit, &mut rng).unwrap();
+    let pvk = prepare_verifying_key::<E>(&vk);
+    let c = circuit.a.unwrap() * circuit.b.unwrap();
+    let proof = Groth16::<E>::prove(&pk, circuit, &mut rng).unwrap();
+    assert!(Groth16::<E>::verify_with_processed_vk(&pvk, &[c], &proof).unwrap());
+
+    let start = start_timer!(|| "collect_script");
+    let script = Verifier::verify_proof(&vec![c], &proof, &vk);
+    end_timer!(start);
+    println!("groth16::test_verify_proof = {} bytes", script.len());
+
+    let start = start_timer!(|| "execute_script");
+    let exec_result = execute_script_without_stack_limit(script);
+    end_timer!(start);
+
+    assert!(exec_result.success);
+}
+
+#[test]
 fn test_groth16_verifier() {
+    type E = Bn254;
+    let k = 6;
+    let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+    let circuit = DummyCircuit::<<E as Pairing>::ScalarField> {
+        a: Some(<E as Pairing>::ScalarField::rand(&mut rng)),
+        b: Some(<E as Pairing>::ScalarField::rand(&mut rng)),
+        num_variables: 10,
+        num_constraints: 1 << k,
+    };
+    let (pk, vk) = Groth16::<E>::setup(circuit, &mut rng).unwrap();
+    let pvk = prepare_verifying_key::<E>(&vk);
+
+    let c = circuit.a.unwrap() * circuit.b.unwrap();
+
+    let proof = Groth16::<E>::prove(&pk, circuit, &mut rng).unwrap();
+    assert!(Groth16::<E>::verify_with_processed_vk(&pvk, &[c], &proof).unwrap());
+
+    let script = Verifier::verify_proof_script(&vk);
+    let witness = Verifier::push_proof_script(&proof, &vec![c], &vk);
+    let exec_result = execute_script_without_stack_limit(script!(
+        {witness}
+        {script}
+    ));
+    println!("final stack {}", exec_result.final_stack.len());
+    println!("remain_script {}", exec_result.remaining_script.len());
+    assert!(exec_result.success);
+
+    /*
+    let total_script = Verifier::verify_proof(&vec![c], &proof, &vk);
+    let total_exec_result = execute_script_without_stack_limit(total_script);
+    println!("total_final stack {}", total_exec_result.final_stack.len());
+    println!(
+        "total_remain_script {}",
+        total_exec_result.remaining_script.len()
+    );
+
+    assert_eq!(
+        exec_result.final_stack.len(),
+        total_exec_result.final_stack.len(),
+        "stack"
+    );
+
+    for i in 0..exec_result.final_stack.0.len() {
+        assert_eq!(
+            exec_result.final_stack.0.get(i),
+            total_exec_result.final_stack.0.get(i),
+            "i: {}",
+            i
+        );
+    }
+    */
+}
+
+#[test]
+fn test_groth16_verifier_chunk() {
     type E = Bn254;
     let k = 6;
     let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());

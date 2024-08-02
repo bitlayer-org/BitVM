@@ -1,5 +1,5 @@
 // utils for push fields into stack
-use ark_ff::Field;
+use ark_ff::{Field, UniformRand};
 use num_bigint::BigUint;
 
 use crate::{
@@ -28,4 +28,10 @@ pub fn fq12_push(element: ark_bn254::Fq12) -> Script {
             { Fq::push_u32_le(&BigUint::from(elem).to_u32_digits()) }
        }
     }
+}
+
+#[test]
+fn test() {
+    let ele = ark_bn254::Fq12::ONE;
+    println!("element = {}", ele.to_base_prime_field_elements().count());
 }

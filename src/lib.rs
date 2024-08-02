@@ -7,7 +7,6 @@ pub mod treepp {
 }
 
 use core::fmt;
-use std::borrow::BorrowMut;
 
 use bitcoin::{hashes::Hash, hex::DisplayHex, Opcode, ScriptBuf, TapLeafHash, Transaction};
 use bitcoin_scriptexec::{Exec, ExecCtx, ExecError, ExecStats, Options, Stack, TxTemplate};
@@ -61,7 +60,7 @@ pub struct ExecuteInfo {
     pub error: Option<ExecError>,
     pub final_stack: FmtStack,
     pub alt_stack: FmtStack,
-    pub remaining_script: String,
+    pub remaining_script: ScriptBuf,
     pub last_opcode: Option<Opcode>,
     pub stats: ExecStats,
 }
@@ -127,7 +126,7 @@ pub fn execute_script(script: treepp::Script) -> ExecuteInfo {
         last_opcode: res.opcode,
         final_stack: FmtStack(exec.stack().clone()),
         alt_stack: FmtStack(exec.altstack().clone()),
-        remaining_script: exec.remaining_script().to_asm_string(),
+        remaining_script: exec.remaining_script().to_owned(),
         stats: exec.stats().clone(),
     }
 }
@@ -173,7 +172,7 @@ pub fn execute_script_without_stack_limit(script: treepp::Script) -> ExecuteInfo
         last_opcode: res.opcode,
         final_stack: FmtStack(exec.stack().clone()),
         alt_stack: FmtStack(exec.altstack().clone()),
-        remaining_script: exec.remaining_script().to_asm_string(),
+        remaining_script: exec.remaining_script().to_owned(),
         stats: exec.stats().clone(),
     }
 }
@@ -220,7 +219,7 @@ fn execute_sub_script(
         last_opcode: res.opcode,
         final_stack: FmtStack(exec.stack().clone()),
         alt_stack: FmtStack(exec.altstack().clone()),
-        remaining_script: exec.remaining_script().to_asm_string(),
+        remaining_script: exec.remaining_script().to_owned(),
         stats: exec.stats().clone(),
     };
 
