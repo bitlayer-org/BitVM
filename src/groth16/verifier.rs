@@ -184,7 +184,6 @@ impl Verifier {
             // // check final_f == hint
             { Fq12::fromaltstack()}
             { Fq12::equalverify() }
-            OP_TRUE
         )
     }
 
