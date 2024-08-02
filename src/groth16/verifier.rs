@@ -98,7 +98,7 @@ impl Verifier {
         };
 
         assert_eq!(hint, c.pow(P_POW3.to_u64_digits()), "hint isn't correct!");
-        println!("my hint: {}", hint);
+        // println!("my hint: {}", hint);
 
         let p2 = proof.c;
         let p4 = proof.a;
@@ -236,7 +236,7 @@ impl Verifier {
         };
 
         assert_eq!(hint, c.pow(P_POW3.to_u64_digits()), "hint isn't correct!");
-        println!("total hint: {}", hint);
+        // println!("total hint: {}", hint);
 
         let p2 = proof.c;
         let p3 = vk.alpha_g1;

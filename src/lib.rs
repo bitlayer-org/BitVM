@@ -226,6 +226,58 @@ fn execute_sub_script(
     execute_info
 }
 
+pub fn execute_script_with_inputs(script: treepp::Script, witness: Vec<Vec<u8>>) -> ExecuteInfo {
+    // Get the default options for the script exec.
+    let mut opts = Options::default();
+    // Do not enforce the stack limit.
+    opts.enforce_stack_limit = false;
+
+    let mut exec = Exec::new(
+        ExecCtx::Tapscript,
+        opts,
+        TxTemplate {
+            tx: Transaction {
+                version: bitcoin::transaction::Version::TWO,
+                lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
+                input: vec![],
+                output: vec![],
+            },
+            prevouts: vec![],
+            input_idx: 0,
+            taproot_annex_scriptleaf: Some((TapLeafHash::all_zeros(), None)),
+        },
+        script.compile(),
+        witness,
+    )
+    .expect("error creating exec");
+
+    loop {
+        let temp_res = exec.exec_next();
+        match temp_res {
+            Ok(()) => (),
+            Err(err) => {
+                if err.success == false {
+                    println!("temp_res: {:?}", temp_res);
+                }
+                break;
+            }
+        }
+    }
+
+    let res = exec.result().unwrap();
+    let execute_info = ExecuteInfo {
+        success: res.success,
+        error: res.error.clone(),
+        last_opcode: res.opcode,
+        final_stack: FmtStack(exec.stack().clone()),
+        alt_stack: FmtStack(exec.altstack().clone()),
+        remaining_script: exec.remaining_script().to_owned(),
+        stats: exec.stats().clone(),
+    };
+
+    execute_info
+}
+
 #[cfg(test)]
 mod test {
     use crate::bn254;
