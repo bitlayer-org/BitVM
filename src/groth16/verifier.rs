@@ -104,6 +104,8 @@ impl Verifier {
         let p4 = proof.a;
         let q4 = proof.b;
 
+        // fixed length: 9*8 + 9*12*4 = 504
+        // scalar length: len(scalars)*9
         script! {
             for scalar in scalars {
                 {fr_push(scalar)}
