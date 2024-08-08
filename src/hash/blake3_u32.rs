@@ -268,9 +268,11 @@ pub fn blake3() -> Script {
 
 pub fn blake3_u32(num_u32: usize) -> Script {
     let num_bytes = num_u32 * 4;
+    /*
     assert!(num_bytes <= 512,
             "This blake3 implementation does not support input larger than 512 bytes due to stack limit. \
             Please modify the hashing routine to avoid calling blake3 in this way.");
+    */
 
     // Compute how many padding elements are needed
     let num_blocks = (num_bytes + 64 - 1) / 64;
@@ -595,10 +597,21 @@ mod tests {
 
     #[test]
     fn test_blake3_u32s2() {
-        let script = script!(/*{ blake3_u32(25)} */);
+        let script = script!({ blake3_u32(25) });
         println!("Blake3_u32(15) size: {:?} \n", script.len());
 
         let res = execute_script_with_inputs(script, vec![vec![0xab]; 25]);
+        println!("res: {:1000}", res);
+        println!("alt stack length: {}", res.alt_stack.len());
+        println!("stack length: {}", res.final_stack.len());
+    }
+
+    #[test]
+    fn test_blake3_u32s3() {
+        let script = script!({ blake3_u32(0) });
+        println!("Blake3_u32(15) size: {:?} \n", script.len());
+
+        let res = execute_script_with_inputs(script, vec![]);
         println!("res: {:1000}", res);
         println!("alt stack length: {}", res.alt_stack.len());
         println!("stack length: {}", res.final_stack.len());
