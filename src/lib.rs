@@ -23,7 +23,7 @@ pub mod u32;
 pub mod u4;
 
 /// A wrapper for the stack types to print them better.
-pub struct FmtStack(Stack);
+pub struct FmtStack(pub Stack);
 impl fmt::Display for FmtStack {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut iter = self.0.iter_str().enumerate().peekable();
@@ -177,7 +177,7 @@ pub fn execute_script_without_stack_limit(script: treepp::Script) -> ExecuteInfo
     }
 }
 
-fn execute_sub_script(
+pub fn execute_sub_script(
     script: Vec<u8>,
     stack: Vec<Vec<u8>>,
     mut alt_stack: Vec<Vec<u8>>,
@@ -257,7 +257,7 @@ pub fn execute_script_with_inputs(script: treepp::Script, witness: Vec<Vec<u8>>)
             Ok(()) => (),
             Err(err) => {
                 if err.success == false {
-                    println!("temp_res: {:?}", temp_res);
+                    // println!("temp_res: {:?}", temp_res);
                 }
                 break;
             }

@@ -1,5 +1,10 @@
+use bitcoin::opcodes::all::{
+    OP_ENDIF, OP_FROMALTSTACK, OP_GREATERTHAN, OP_LESSTHAN, OP_NEGATE, OP_TOALTSTACK,
+};
+
 use crate::bigint::BigIntImpl;
 use crate::treepp::{script, Script};
+use core::num;
 use std::cmp::min;
 
 impl<const N_BITS: u32, const LIMB_SIZE: u32> BigIntImpl<N_BITS, LIMB_SIZE> {
@@ -168,6 +173,26 @@ pub fn limb_to_be_bits(num_bits: u32) -> Script {
     }
 }
 
+pub fn limb_to_be_byte() -> Script {
+    let num_bits = 31;
+    let num_bytes = 4;
+    script! {
+        { limb_to_be_bits(num_bits) }
+        for _ in 0..(num_bytes * 8 - num_bits) {
+            {0}
+        }
+        for _ in 0..num_bytes {
+            for _ in 0..7 {
+                OP_DUP OP_ADD OP_ADD
+            }
+            OP_TOALTSTACK
+        }
+        for _ in 0..num_bytes {
+            OP_FROMALTSTACK
+        }
+    }
+}
+
 pub fn limb_to_be_bits_toaltstack(num_bits: u32) -> Script {
     if num_bits >= 2 {
         script! {
@@ -185,6 +210,7 @@ pub fn limb_to_be_bits_toaltstack(num_bits: u32) -> Script {
 #[cfg(test)]
 mod test {
     use super::{limb_to_be_bits, limb_to_le_bits};
+    use crate::bigint::bits::limb_to_be_byte;
     use crate::bigint::{U254, U64};
     use crate::treepp::execute_script;
     use bitcoin_script::script;
@@ -192,6 +218,38 @@ mod test {
     use num_bigint::{BigUint, RandomBits};
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
+
+    #[test]
+    fn test_limb_to_be_bytes() {
+        println!(
+            "limb_to_be_bits(29): {:?} bytes",
+            script! { {limb_to_be_byte()} }.len()
+        );
+        let a: u32 = 0x123;
+        let script = script! {
+            { a }
+            { limb_to_be_byte() }
+        };
+        let exec_result = execute_script(script);
+        println!("{:1000}", exec_result.final_stack);
+        println!("length: {}", exec_result.final_stack.len());
+    }
+
+    #[test]
+    fn test_limb_to_be_bytes2() {
+        println!(
+            "limb_to_be_bits(29): {:?} bytes",
+            script! { {limb_to_be_byte()} }.len()
+        );
+        let a: u32 = 0x1eadbeef;
+        let script = script! {
+            {a}
+            { limb_to_be_byte() }
+        };
+        let exec_result = execute_script(script);
+        println!("{:1000}", exec_result);
+        println!("length: {}", exec_result.final_stack.len());
+    }
 
     #[test]
     fn test_limb_to_be_bits() {

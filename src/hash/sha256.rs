@@ -1,5 +1,7 @@
 #![allow(non_snake_case)]
 
+use core::num;
+
 use crate::pseudo::push_to_stack;
 use crate::treepp::{script, Script};
 use crate::u32::u32_add::u32_add_drop;
@@ -26,7 +28,7 @@ const INITSTATE: [u32; 8] = [
     0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 ];
 
-/// sha256 take indefinite length input on the top of stack and return 256 bit (64 byte)
+/// sha256 take indefinite length input on the top of stack and return 256 bit (32 byte)
 pub fn sha256(num_bytes: usize) -> Script {
     if num_bytes == 32 {
         return sha256_32bytes();
@@ -39,7 +41,7 @@ pub fn sha256(num_bytes: usize) -> Script {
         chunks_size += 1;
     }
 
-    script! {
+    let mut sha256_script = script! {
         {push_reverse_bytes_to_alt(num_bytes)}
 
         // top of stack: [ [n bytes input] ]
@@ -65,7 +67,9 @@ pub fn sha256(num_bytes: usize) -> Script {
         for _ in 0..8 {
             {u32_fromaltstack()}
         }
-    }
+    };
+    sha256_script.add_stack_hint(num_bytes as i32 * -1, 32 - num_bytes as i32);
+    sha256_script
 }
 
 pub fn sha256_32bytes() -> Script {
@@ -1210,5 +1214,12 @@ mod tests {
         };
         let res = execute_script(script);
         assert!(res.success);
+    }
+
+    #[test]
+    fn test_sha256_length() {
+        for i in [164, 98, 170] {
+            println!("size = {}, length = {}", i, sha256(i).len());
+        }
     }
 }
