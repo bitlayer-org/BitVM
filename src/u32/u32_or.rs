@@ -78,7 +78,7 @@ pub fn u8_or(i: u32) -> Script {
 pub fn u32_or(a: u32, b: u32, stack_size: u32) -> Script {
     assert_ne!(a, b);
 
-    script! {
+    let mut script = script! {
         {u32_copy_zip(a, b)}
 
         {u8_or(8 + (stack_size - 2) * 4)}
@@ -99,7 +99,9 @@ pub fn u32_or(a: u32, b: u32, stack_size: u32) -> Script {
         OP_FROMALTSTACK
         OP_FROMALTSTACK
         OP_FROMALTSTACK
-    }
+    };
+    script.add_stack_hint(-1 * ((stack_size as i32 - 1) * 4 + 256), 0);
+    script
 }
 
 #[cfg(test)]
@@ -120,7 +122,7 @@ mod tests {
             let mut rng = rand::thread_rng();
             let x: u32 = rng.gen();
             let y: u32 = rng.gen();
-            let exec_script = script! {
+            let mut exec_script = script! {
                 {u8_push_xor_table()}
                 {u32_push(x)}
                 {u32_push(y)}
@@ -132,6 +134,7 @@ mod tests {
                 {u8_drop_xor_table()}
                 OP_FROMALTSTACK
             };
+            assert_eq!(exec_script.get_stack().stack_changed, 1);
             let res = execute_script(exec_script);
             assert!(res.success);
         }

@@ -84,7 +84,7 @@ pub fn u8_xor(i: u32) -> Script {
 /// Expects u8_xor_table on the stack
 pub fn u32_xor(a: u32, b: u32, stack_size: u32) -> Script {
     assert_ne!(a, b);
-    script! {
+    let mut script = script! {
         {u32_copy_zip(a, b)}
 
         //
@@ -109,7 +109,9 @@ pub fn u32_xor(a: u32, b: u32, stack_size: u32) -> Script {
         OP_FROMALTSTACK
         OP_FROMALTSTACK
         OP_FROMALTSTACK
-    }
+    };
+    script.add_stack_hint(-1 * ((stack_size as i32 - 1) * 4 + 256), 0);
+    script
 }
 
 /// Push the u8 XOR table

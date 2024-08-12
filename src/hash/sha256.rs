@@ -68,7 +68,7 @@ pub fn sha256(num_bytes: usize) -> Script {
             {u32_fromaltstack()}
         }
     };
-    sha256_script.add_stack_hint(num_bytes as i32 * -1, 32 - num_bytes as i32);
+    // sha256_script.add_stack_hint(num_bytes as i32 * -1, 32 - num_bytes as i32);
     sha256_script
 }
 
@@ -929,6 +929,20 @@ mod tests {
             return x;
         }
         (x >> n) | (x << (32 - n))
+    }
+
+    #[test]
+    fn test_size() {
+        let script = u8_push_xor_table();
+        println!("script size: {}", script.len());
+        let res = execute_script(script);
+        println!("stack size: {}", res.final_stack.len());
+        let mut sha256_script = sha256(32);
+        let stack_status = sha256_script.get_stack();
+        println!("stack status: {:?}", stack_status);
+        let mut sha256_script = sha256(80);
+        let stack_status = sha256_script.get_stack();
+        println!("stack status: {:?}", stack_status);
     }
 
     #[test]

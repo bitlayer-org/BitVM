@@ -72,7 +72,7 @@ pub fn u8_and(i: u32) -> Script {
 /// Expects the u8_xor_table to be on the stack
 pub fn u32_and(a: u32, b: u32, stack_size: u32) -> Script {
     assert_ne!(a, b);
-    script! {
+    let mut script = script! {
         {u32_copy_zip(a, b)}
 
         {u8_and(8 + (stack_size - 2) * 4)}
@@ -92,7 +92,9 @@ pub fn u32_and(a: u32, b: u32, stack_size: u32) -> Script {
         OP_FROMALTSTACK
         OP_FROMALTSTACK
         OP_FROMALTSTACK
-    }
+    };
+    script.add_stack_hint(-1 * ((stack_size as i32 - 1) * 4 + 256), 0);
+    script
 }
 
 #[cfg(test)]
