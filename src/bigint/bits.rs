@@ -185,6 +185,16 @@ pub fn limb_to_be_byte() -> Script {
             for _ in 0..7 {
                 OP_DUP OP_ADD OP_ADD
             }
+
+            // abs begin
+            OP_DUP
+            OP_0
+            OP_LESSTHAN
+            OP_IF
+            OP_NEGATE
+            OP_ENDIF
+            // abs end
+
             OP_TOALTSTACK
         }
         for _ in 0..num_bytes {

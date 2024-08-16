@@ -504,6 +504,7 @@ pub fn blake3_160_hash_equalverify() -> Script {
 
 #[cfg(test)]
 mod tests {
+    use crate::bigint::bits::limb_to_be_byte;
     use crate::execute_script_with_inputs;
     use crate::hash::blake3::*;
 
@@ -653,5 +654,195 @@ mod tests {
         let res = execute_script(script);
 
         assert!(res.success);
+    }
+    #[test]
+    fn test2() {
+        let witness: Vec<Vec<u8>> = vec![
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![88, 56, 29],
+            vec![170, 137, 188, 20],
+            vec![226, 183, 60, 1],
+            vec![171, 224, 7, 8],
+            vec![43, 250, 126, 21],
+            vec![133, 101, 203, 9],
+            vec![152, 138, 236, 8],
+            vec![57, 242, 235, 6],
+            vec![208, 40, 38, 13],
+            vec![221, 68, 26],
+            vec![81, 243, 68, 6],
+            vec![194, 59, 20, 4],
+            vec![78, 118, 232, 1],
+            vec![183, 64, 79],
+            vec![254, 248, 102, 23],
+            vec![154, 195, 206, 21],
+            vec![149, 0, 187, 19],
+            vec![118, 179, 195, 5],
+            vec![222, 219, 42],
+            vec![86, 115, 160, 26],
+            vec![117, 179, 44, 26],
+            vec![253, 208, 99, 15],
+            vec![155, 245, 160, 16],
+            vec![151, 9, 94, 17],
+            vec![128, 153, 64, 3],
+            vec![135, 162, 13, 15],
+            vec![62, 14, 142, 5],
+            vec![88, 56, 29],
+            vec![170, 137, 188, 20],
+            vec![226, 183, 60, 1],
+            vec![171, 224, 7, 8],
+            vec![43, 250, 126, 21],
+            vec![133, 101, 203, 9],
+            vec![152, 138, 236, 8],
+            vec![57, 242, 235, 6],
+            vec![208, 40, 38, 13],
+            vec![221, 68, 26],
+            vec![81, 243, 68, 6],
+            vec![194, 59, 20, 4],
+            vec![78, 118, 232, 1],
+            vec![183, 64, 79],
+            vec![254, 248, 102, 23],
+            vec![154, 195, 206, 21],
+            vec![149, 0, 187, 19],
+            vec![118, 179, 195, 5],
+            vec![],
+            vec![],
+            vec![],
+            vec![194, 0],
+            vec![109, 13, 132, 4],
+            vec![213, 130, 35, 3],
+            vec![178, 123, 112, 20],
+            vec![8, 138, 93, 10],
+            vec![179, 204, 228, 2],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![207, 13],
+            vec![231, 82, 67, 12],
+            vec![110, 81, 136, 7],
+            vec![252, 219, 66, 8],
+            vec![],
+            vec![],
+            vec![],
+            vec![183, 2],
+            vec![55, 207, 55, 7],
+            vec![15, 28, 229, 26],
+            vec![93, 175, 216, 28],
+            vec![184, 173, 70, 11],
+            vec![230, 195, 114, 7],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+            vec![91, 14],
+            vec![209, 148, 21, 8],
+            vec![27, 51, 3, 23],
+            vec![37, 117, 113, 31],
+            vec![234],
+            vec![],
+        ];
+
+        for wit in witness.iter() {
+            let script = { limb_to_be_byte() };
+            let res = execute_script_with_inputs(script, vec![wit.clone()]);
+            assert_eq!(res.final_stack.len(), 4, "wit: {:?}", wit);
+            // for i in 0..4 {
+            // if res.final_stack.get(i).len() == 1 && res.final_stack.get(i)[0] > 127 {
+            // panic!("some bad happend {:?}, stack: {:100}", wit, res.final_stack);
+            // }
+            // }
+            // println!("res: {:1000}", res.final_stack);
+        }
+
+        let script = script!({ blake3_u32(witness.len()) });
+        println!("Blake3_u32({}) size: {:?} \n", witness.len(), script.len());
+        let res = execute_script_with_inputs(script, witness);
+        println!("res.stack: {:1000}", res.final_stack);
+        assert_eq!(res.final_stack.len(), 32);
+        println!("res: {:?}", res.error);
+
+        /*
+        // println!("alt stack length: {}", res.alt_stack.len());
+        println!("stack length: {}", res.final_stack.len());
+        println!("remain script: {}", res.remaining_script.len());
+        println!(
+            "xor arg1 : {:?} {:?} {:?} {:?}",
+            res.final_stack.get(res.final_stack.len() - 1 - 0),
+            res.final_stack.get(res.final_stack.len() - 1 - 1),
+            res.final_stack.get(res.final_stack.len() - 1 - 2),
+            res.final_stack.get(res.final_stack.len() - 1 - 3)
+        );
+        println!(
+            "xor arg2 : {:?} {:?} {:?} {:?}",
+            res.final_stack.get(res.final_stack.len() - 1 - (9 * 4 + 0)),
+            res.final_stack.get(res.final_stack.len() - 1 - (9 * 4 + 1)),
+            res.final_stack.get(res.final_stack.len() - 1 - (9 * 4 + 2)),
+            res.final_stack.get(res.final_stack.len() - 1 - (9 * 4 + 3))
+        );
+
+        let mut xor_table = vec![];
+        for i in 0..256 {
+            xor_table.push(
+                res.final_stack
+                    .get(res.final_stack.len() - 1 - (16 * 4 + i)),
+            )
+        }
+        println!("xor table: {:?}", xor_table);
+        */
     }
 }
