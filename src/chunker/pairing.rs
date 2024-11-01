@@ -16,7 +16,7 @@ use crate::treepp::*;
 use ark_ec::bn::BnConfig;
 use ark_ff::Field;
 
-pub fn calc_f<T: BCAssigner>(
+pub fn quad_miller_loop<T: BCAssigner>(
     assigner: &mut T,
     im_var_p: Vec<FqType>,
     constants: Vec<G2Prepared>,

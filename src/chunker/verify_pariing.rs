@@ -15,7 +15,7 @@ use ark_groth16::{Proof, VerifyingKey};
 use core::ops::Neg;
 
 
-pub fn verify_f<T: BCAssigner>(
+pub fn check_pairing<T: BCAssigner>(
     assigner: &mut T,
     prefix: &str,
     pa:Fq12Type,
@@ -86,8 +86,8 @@ mod test {
     use crate::bn254::utils::g1_affine_push_not_montgomery;
     use crate::bn254::utils::hinted_from_eval_point;
     use crate::chunker::assigner::*;
-    use crate::chunker::calc_f::*;
-    use crate::chunker::p::*;
+    use crate::chunker::pairing::*;
+    use crate::chunker::p_lst::*;
     use crate::chunker::elements::DataType::G1PointData;
     use crate::{execute_script_with_inputs, execute_script, execute_script_without_stack_limit};
 
@@ -233,7 +233,7 @@ mod test {
     }
     
     #[test]
-    fn test_p() {
+    fn test_make_chunk_p() {
         let mut assigner = DummyAssinger {};
 
         type E = Bn254;
@@ -253,7 +253,7 @@ mod test {
 
         // let (hinted_groth16_verifier, hints) = Verifier::hinted_verify(&vec![c], &proof, &vk);
         let (g1a, g1p) = generate_p1(&mut assigner, &vec![c], &vk);
-        let (segments, plist) = p(&mut assigner, g1p, g1a, &proof, &vk);
+        let (segments, plist) = make_chunk_p(&mut assigner, g1p, g1a, &proof, &vk);
 
         println!("segments len {}", segments.len());
         for segment in segments {
@@ -284,7 +284,7 @@ mod test {
     }
 
     #[test]
-    fn test_calc_f() {
+    fn test_pairing() {
         let mut assigner = DummyAssinger {};
 
         type E = Bn254;
@@ -306,16 +306,16 @@ mod test {
         let rc = ark_bn254::Fq12::rand(&mut prng);
         let mut tc = Fq12Type::new(&mut assigner, &format!("{}{}", "test".to_owned(), "c"));
         tc.fill_with_data(Fq12Data(rc));
-        let (segments, tf) = verify_f(&mut assigner, "test",tc, &vec![c], &proof, &vk);
+        let (segments, tf) = check_pairing(&mut assigner, "test",tc, &vec![c], &proof, &vk);
         let mut tc = Fq12Type::new(&mut assigner, &format!("{}{}", "test".to_owned(), "c1"));
         tc.fill_with_data(Fq12Data(tf));
 
         // let (hinted_groth16_verifier, hints) = Verifier::hinted_verify(&vec![c], &proof, &vk);
         let (g1a, g1p) = generate_p1(&mut assigner, &vec![c], &vk);
-        let (segments, tp_lst) = p(&mut assigner, g1p, g1a, &proof, &vk);
+        let (segments, tp_lst) = make_chunk_p(&mut assigner, g1p, g1a, &proof, &vk);
 
         let (constants, c,c_inv,wi,p_lst,q4) = generate_f_arg(&vec![c], &proof, &vk);
-        let (segments, fs, f) = calc_f(&mut assigner, tp_lst, constants, c,c_inv,wi,p_lst,q4);
+        let (segments, fs, f) = quad_miller_loop(&mut assigner, tp_lst, constants, c,c_inv,wi,p_lst,q4);
         println!("tf: {} \n f: {}", tf, f);
         println!("tc: {:?} \n fs: {:?}", tc, fs);
 
@@ -348,7 +348,7 @@ mod test {
     }
 
     #[test]
-    fn test_verify_f() {
+    fn test_verify_pairing() {
         let mut assigner = DummyAssinger {};
 
         type E = Bn254;
@@ -370,11 +370,11 @@ mod test {
         let rc = ark_bn254::Fq12::rand(&mut prng);
         let mut tc = Fq12Type::new(&mut assigner, &format!("{}{}", "test".to_owned(), "c"));
         tc.fill_with_data(Fq12Data(rc));
-        let (segments, f) = verify_f(&mut assigner, "test",tc, &vec![c], &proof, &vk);
+        let (segments, f) = check_pairing(&mut assigner, "test",tc, &vec![c], &proof, &vk);
         let mut tc1 = Fq12Type::new(&mut assigner, &format!("{}{}", "test".to_owned(), "c1"));
         tc1.fill_with_data(Fq12Data(f));
 
-        let (segments, f1) = verify_f(&mut assigner, "test",tc1, &vec![c], &proof, &vk);
+        let (segments, f1) = check_pairing(&mut assigner, "test",tc1, &vec![c], &proof, &vk);
         println!("segments len {}", segments.len());
         for segment in segments {
             let witness = segment.witness(&assigner);
@@ -428,22 +428,22 @@ mod test {
         let mut tc = Fq12Type::new(&mut assigner, &format!("{}{}", "test".to_owned(), "c"));
         tc.fill_with_data(Fq12Data(rc));
         // target f = tc, tf
-        let (s, tf) = verify_f(&mut assigner, "test",tc, &vec![cx], &proof, &vk);
+        let (s, tf) = check_pairing(&mut assigner, "test",tc, &vec![cx], &proof, &vk);
         let mut tc = Fq12Type::new(&mut assigner, &format!("{}{}", "test".to_owned(), "c1"));
         tc.fill_with_data(Fq12Data(tf));
 
         // let (hinted_groth16_verifier, hints) = Verifier::hinted_verify(&vec![c], &proof, &vk);
         let (g1a, g1p) = generate_p1(&mut assigner, &vec![cx], &vk);
-        let (s, tp_lst) = p(&mut assigner, g1p, g1a, &proof, &vk);
+        let (s, tp_lst) = make_chunk_p(&mut assigner, g1p, g1a, &proof, &vk);
         println!("segments p len {}", s.len());
         segments.extend(s);
         // calc f = fs,f
         let (constants, c,c_inv,wi,p_lst,q4) = generate_f_arg(&vec![cx], &proof, &vk);
-        let (s, fs, f) = calc_f(&mut assigner, tp_lst, constants, c,c_inv,wi,p_lst,q4);
+        let (s, fs, f) = quad_miller_loop(&mut assigner, tp_lst, constants, c,c_inv,wi,p_lst,q4);
         println!("segments calc_f len {}", s.len());
         segments.extend(s);
         //verify f
-        let (s, f1) = verify_f(&mut assigner, "test",fs, &vec![cx], &proof, &vk);
+        let (s, f1) = check_pairing(&mut assigner, "test",fs, &vec![cx], &proof, &vk);
         println!("segments verify_f len {}", s.len());
         segments.extend(s);
         println!("segments total len {}", segments.len());

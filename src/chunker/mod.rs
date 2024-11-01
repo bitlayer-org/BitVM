@@ -1,10 +1,10 @@
 pub mod assigner;
-pub mod calc_f;
+pub mod pairing;
 pub mod check_q4;
 pub mod common;
 pub mod elements;
 pub mod fq12_ell;
 pub mod fq12_mul;
-pub mod p;
+pub mod p_lst;
 pub mod segment;
-pub mod verify_f;
+pub mod verify_pariing;

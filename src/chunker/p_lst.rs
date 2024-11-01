@@ -17,7 +17,7 @@ use ark_ff::Field;
 use ark_groth16::{Proof, VerifyingKey};
 use core::ops::Neg;
 
-pub fn p<T: BCAssigner>(
+pub fn make_chunk_p<T: BCAssigner>(
     assigner: &mut T,
     g1p: G1PointType,
     g1a: ark_bn254::G1Affine,
@@ -25,33 +25,24 @@ pub fn p<T: BCAssigner>(
     vk: &VerifyingKey<Bn254>,
 ) -> (Vec<Segment>, Vec<FqType>) {
     let mut segments = vec![];
-    let (s1, a1, b1) = p1(assigner, g1p, g1a);
+    let (s1, a1, b1) = make_chunk_p1(assigner, g1p, g1a);
 
     let ( p2, p3, p4) = (proof.c, vk.alpha_g1, proof.a);
-    let (hinted_script3, hint3) = hinted_from_eval_point(p2);
-    let (hinted_script4, hint4) = hinted_from_eval_point(p3);
-    let (hinted_script5, hint5) = hinted_from_eval_point(p4);
 
-    let (s2, a2, b2) = make_chunk_p(
+    let (s2, a2, b2) = make_chunk_p234(
         assigner,
         "F_p2".to_owned(),
         p2,
-        hinted_script3.clone(),
-        hint3.clone(),
     );
-    let (s3, a3, b3) = make_chunk_p(
+    let (s3, a3, b3) = make_chunk_p234(
         assigner,
         "F_p3".to_owned(),
         p3,
-        hinted_script4.clone(),
-        hint4.clone(),
     );
-    let (s4, a4, b4) = make_chunk_p(
+    let (s4, a4, b4) = make_chunk_p234(
         assigner,
         "F_p4".to_owned(),
         p4,
-        hinted_script5.clone(),
-        hint5.clone(),
     );
     segments.extend(s1);
     segments.extend(s2);
@@ -63,7 +54,7 @@ pub fn p<T: BCAssigner>(
 }
 
 
-pub fn p1<T: BCAssigner>(
+pub fn make_chunk_p1<T: BCAssigner>(
     assigner: &mut T,
     g1p: G1PointType,
     g1a: ark_bn254::G1Affine,
@@ -107,14 +98,14 @@ pub fn p1<T: BCAssigner>(
 
 }
 
-pub fn make_chunk_p<T: BCAssigner>(
+pub fn make_chunk_p234<T: BCAssigner>(
     assigner: &mut T,
     fn_name: String,
     p: ark_bn254::G1Affine,
-    script: Script,
-    hint: Vec<Hint>,
 ) -> (Vec<Segment>, FqType, FqType) {
     let mut segments = vec![];
+
+    let (script, hint) = hinted_from_eval_point(p);
 
     let mut result_p_a = FqType::new(assigner, &format!("{}_o_a", fn_name));
     result_p_a.fill_with_data(FqData(-p.x / p.y));
@@ -155,7 +146,7 @@ mod test {
 
 
     #[test]
-    fn test_make_chunk_p() {
+    fn test_make_chunk_p234() {
         let mut prng = ChaCha20Rng::seed_from_u64(0);
         let p = ark_bn254::G1Affine::rand(&mut prng);
         let (ell_by_constant_affine_script, hints) = hinted_from_eval_point(p);
@@ -175,12 +166,10 @@ mod test {
 
         println!("chunk:");
         let mut assigner = DummyAssinger {};
-        let (segments, r1, r2) = make_chunk_p(
+        let (segments, r1, r2) = make_chunk_p234(
             &mut assigner,
             "test".to_owned(), 
-            p,
-            ell_by_constant_affine_script.clone(),
-            hints.clone(),
+            p
         );
 
         for segment in segments {
@@ -211,7 +200,7 @@ mod test {
     }
 
     #[test]
-    fn test_p1() {
+    fn test_make_chunk_p1() {
         let k = 2;
         let n = 1 << k;
         let rng = &mut test_rng();
@@ -250,7 +239,7 @@ mod test {
         let g1a = expect;
         let mut g1p = G1PointType::new(&mut assigner, &format!("{}", "test"));
         g1p.fill_with_data(G1PointData(g1a));
-        let (segments, a,b) = p1(&mut assigner, g1p, g1a);
+        let (segments, a,b) = make_chunk_p1(&mut assigner, g1p, g1a);
 
         for segment in segments {
             let witness = segment.witness(&assigner);
