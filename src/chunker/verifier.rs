@@ -1,16 +1,6 @@
 use crate::bn254::ell_coeffs::G2Prepared;
 use crate::bn254::fp254impl::Fp254Impl;
-use crate::bn254::fq::Fq;
-use crate::bn254::fq12::Fq12;
-use crate::bn254::msm::{
-    hinted_msm_with_constant_bases, hinted_msm_with_constant_bases_affine, msm_with_constant_bases,
-    msm_with_constant_bases_affine,
-};
-use crate::bn254::pairing::Pairing;
-use crate::bn254::utils::{
-    fq12_push, fq12_push_not_montgomery, fq2_push, fq2_push_not_montgomery, from_eval_point,
-    hinted_from_eval_point, Hint,
-};
+use crate::bn254::msm::hinted_msm_with_constant_bases_affine;
 use crate::chunker::check_q4::check_q4;
 use crate::chunker::elements::{DataType::G1PointData, ElementTrait, FrType, G2PointType};
 use crate::chunker::msm::chunk_hinted_msm_with_constant_bases_affine;
@@ -18,10 +8,8 @@ use crate::chunker::p::p;
 use crate::chunker::{calc_f, verify_f};
 use crate::groth16::constants::{LAMBDA, P_POW3};
 use crate::groth16::offchain_checker::compute_c_wi;
-use crate::treepp::{script, Script};
 use ark_bn254::{Bn254, G1Projective};
 use ark_ec::pairing::Pairing as ark_Pairing;
-use ark_ec::short_weierstrass::Projective;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
 use ark_ff::Field;
 use ark_groth16::{Proof, VerifyingKey};
@@ -202,21 +190,19 @@ fn verify_to_chunks<T: BCAssigner>(
 #[cfg(test)]
 mod tests {
     use crate::chunker::assigner::DummyAssinger;
-    use crate::chunker::segment;
+    
     use crate::chunker::verifier::verify_to_chunks;
-    use crate::groth16::verifier::Verifier;
-    use crate::{
-        execute_script_as_chunks, execute_script_with_inputs, execute_script_without_stack_limit,
-    };
+    
+    use crate::execute_script_with_inputs;
     use ark_bn254::Bn254;
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use ark_ec::pairing::Pairing;
-    use ark_ff::{BigInteger, PrimeField};
+    use ark_ff::PrimeField;
     use ark_groth16::Groth16;
     use ark_relations::lc;
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-    use ark_std::{end_timer, start_timer, test_rng, UniformRand};
-    use bitcoin_script::script;
+    use ark_std::{test_rng, UniformRand};
+    
     use rand::{RngCore, SeedableRng};
 
     #[derive(Copy)]

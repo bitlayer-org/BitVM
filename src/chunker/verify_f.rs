@@ -74,39 +74,39 @@ pub fn verify_f<T: BCAssigner>(
 mod test {
     use super::*;
     use crate::bn254::fp254impl::Fp254Impl;
-    use crate::bn254::fq::Fq;
-    use crate::bn254::msm::hinted_msm_with_constant_bases_affine;
-    use crate::bn254::utils::g1_affine_push_not_montgomery;
-    use crate::bn254::utils::hinted_from_eval_point;
-    use crate::bn254::{curves::G1Affine, utils::g1_affine_push};
+    
+    
+    
+    
+    
     use crate::chunker::assigner::*;
     use crate::chunker::calc_f::*;
     use crate::chunker::elements::DataType::G1PointData;
     use crate::chunker::p::*;
-    use crate::{execute_script, execute_script_with_inputs, execute_script_without_stack_limit};
+    use crate::execute_script_with_inputs;
 
     use ark_ff::Field;
     use ark_std::UniformRand;
-    use num_bigint::BigUint;
+    
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
 
-    use crate::bn254::utils::Hint;
+    
     use ark_ec::{CurveGroup, VariableBaseMSM};
-    use ark_std::{end_timer, start_timer, test_rng};
+    use ark_std::test_rng;
 
-    use crate::bn254::ell_coeffs::{mul_by_char, G2Prepared};
-    use crate::chunker::elements::{DataType::Fq12Data, ElementTrait, FqType, G1PointType};
-    use crate::execute_script_as_chunks;
-    use crate::groth16::verifier::Verifier;
+    use crate::bn254::ell_coeffs::G2Prepared;
+    use crate::chunker::elements::{DataType::Fq12Data, ElementTrait, G1PointType};
+    
+    
     use ark_bn254::Bn254;
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use ark_ec::pairing::Pairing;
-    use ark_ff::{BigInteger, PrimeField};
+    use ark_ff::PrimeField;
     use ark_groth16::Groth16;
     use ark_relations::lc;
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
-    use bitcoin_script::script;
+    
     use rand::RngCore;
 
     #[derive(Copy)]

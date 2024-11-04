@@ -10,9 +10,6 @@ use crate::chunker::segment::Segment;
 use crate::treepp::{script, Script};
 
 use ark_bn254::Bn254;
-use ark_bn254::G1Projective;
-use ark_ec::pairing::Pairing as ark_Pairing;
-use ark_ec::{CurveGroup, VariableBaseMSM};
 use ark_ff::Field;
 use ark_groth16::{Proof, VerifyingKey};
 use core::ops::Neg;
@@ -134,13 +131,13 @@ pub fn make_chunk_p<T: BCAssigner>(
 mod test {
     use super::*;
     
-    use crate::bn254::{curves::G1Affine, utils::g1_affine_push};
+    
     use crate::bn254::fq::Fq;
     use crate::bn254::fp254impl::Fp254Impl;
     use crate::bn254::msm::hinted_msm_with_constant_bases_affine;
-    use crate::bn254::utils::g1_affine_push_not_montgomery;
+    
     use crate::bn254::utils::hinted_from_eval_point;
-    use crate::chunker::assigner::*;
+    
     use crate::chunker::elements::DataType::G1PointData;
     use crate::{execute_script_with_inputs, execute_script, execute_script_without_stack_limit};
 
