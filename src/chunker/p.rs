@@ -1,4 +1,4 @@
-use super::elements::{FqType, G1PointType};
+use super::elements::{FqType, G1PointType, DataType::G1PointData};
 use super::elements::DataType::FqData;
 
 use crate::bn254::fp254impl::Fp254Impl;
@@ -14,7 +14,9 @@ use ark_ff::Field;
 use ark_groth16::{Proof, VerifyingKey};
 use core::ops::Neg;
 
-pub fn p<T: BCAssigner>(
+
+
+pub fn make_chunk_p<T: BCAssigner>(
     assigner: &mut T,
     g1p: G1PointType,
     g1a: ark_bn254::G1Affine,
@@ -22,34 +24,20 @@ pub fn p<T: BCAssigner>(
     vk: &VerifyingKey<Bn254>,
 ) -> (Vec<Segment>, Vec<FqType>) {
     let mut segments = vec![];
-    let (s1, a1, b1) = p1(assigner, g1p, g1a);
 
     let ( p2, p3, p4) = (proof.c, vk.alpha_g1, proof.a);
-    let (hinted_script3, hint3) = hinted_from_eval_point(p2);
-    let (hinted_script4, hint4) = hinted_from_eval_point(p3);
-    let (hinted_script5, hint5) = hinted_from_eval_point(p4);
+    let mut g2p = G1PointType::new(assigner, &format!("{}", "F_p2"));
+    g2p.fill_with_data(G1PointData(p2));
+    let mut g3p = G1PointType::new(assigner, &format!("{}", "F_p3"));
+    g3p.fill_with_data(G1PointData(p3));
+    let mut g4p = G1PointType::new(assigner, &format!("{}", "F_p4"));
+    g4p.fill_with_data(G1PointData(p4));
 
-    let (s2, a2, b2) = make_chunk_p(
-        assigner,
-        "F_p2".to_owned(),
-        p2,
-        hinted_script3.clone(),
-        hint3.clone(),
-    );
-    let (s3, a3, b3) = make_chunk_p(
-        assigner,
-        "F_p3".to_owned(),
-        p3,
-        hinted_script4.clone(),
-        hint4.clone(),
-    );
-    let (s4, a4, b4) = make_chunk_p(
-        assigner,
-        "F_p4".to_owned(),
-        p4,
-        hinted_script5.clone(),
-        hint5.clone(),
-    );
+    let (s1, a1, b1) = p(assigner, g1p, g1a);
+    let (s2, a2, b2) = p(assigner, g2p, p2);
+    let (s3, a3, b3) = p(assigner, g3p, p3);
+    let (s4, a4, b4) = p(assigner, g4p, p4);
+
     segments.extend(s1);
     segments.extend(s2);
     segments.extend(s3);
@@ -60,7 +48,7 @@ pub fn p<T: BCAssigner>(
 }
 
 
-pub fn p1<T: BCAssigner>(
+fn p<T: BCAssigner>(
     assigner: &mut T,
     g1p: G1PointType,
     g1a: ark_bn254::G1Affine,
@@ -104,28 +92,6 @@ pub fn p1<T: BCAssigner>(
 
 }
 
-pub fn make_chunk_p<T: BCAssigner>(
-    assigner: &mut T,
-    fn_name: String,
-    p: ark_bn254::G1Affine,
-    script: Script,
-    hint: Vec<Hint>,
-) -> (Vec<Segment>, FqType, FqType) {
-    let mut segments = vec![];
-
-    let mut result_p_a = FqType::new(assigner, &format!("{}_o_a", fn_name));
-    result_p_a.fill_with_data(FqData(-p.x / p.y));
-    let mut result_p_b = FqType::new(assigner, &format!("{}_o_b", fn_name));
-    result_p_b.fill_with_data(FqData(p.y.inverse().unwrap()));
-
-    segments.push(
-        Segment::new_with_name(fn_name, script)
-            .add_result(&result_p_a.clone())
-            .add_result(&result_p_b.clone())
-            .add_hint(hint),
-    );
-    (segments, result_p_a, result_p_b)
-}
 
 #[cfg(test)]
 mod test {
@@ -152,63 +118,7 @@ mod test {
 
 
     #[test]
-    fn test_make_chunk_p() {
-        let mut prng = ChaCha20Rng::seed_from_u64(0);
-        let p = ark_bn254::G1Affine::rand(&mut prng);
-        let (ell_by_constant_affine_script, hints) = hinted_from_eval_point(p);
-        let script = script! {
-            for tmp in hints.clone() {
-                { tmp.push() }
-            }
-            { ell_by_constant_affine_script.clone() }
-            { Fq::push_u32_le_not_montgomery(&BigUint::from(-p.x / p.y).to_u32_digits()) }
-            { Fq::push_u32_le_not_montgomery(&BigUint::from(p.y.inverse().unwrap()).to_u32_digits()) }
-            { Fq::equalverify(2, 0) }
-            { Fq::equalverify(1, 0) }
-            OP_TRUE
-        };
-        let exec_result = execute_script(script);
-        println!("exec_result: {:}", exec_result);
-
-        println!("chunk:");
-        let mut assigner = DummyAssinger {};
-        let (segments, r1, r2) = make_chunk_p(
-            &mut assigner,
-            "test".to_owned(), 
-            p,
-            ell_by_constant_affine_script.clone(),
-            hints.clone(),
-        );
-
-        for segment in segments {
-            let witness = segment.witness(&assigner);
-            let script = segment.script(&assigner);
-
-            let res = execute_script_with_inputs(script.clone(), witness.clone());
-            println!("segment exec_result: {}", res);
-
-            let zero: Vec<u8> = vec![];
-            assert_eq!(res.final_stack.len(), 1, "{}", segment.name); // only one element left
-            assert_eq!(res.final_stack.get(0), zero, "{}", segment.name);
-            assert!(
-                res.stats.max_nb_stack_items < 1000,
-                "{}",
-                res.stats.max_nb_stack_items
-            );
-
-            let mut lenw = 0;
-            for w in witness {
-                lenw += w.len();
-            }
-            assert!(
-                script.len() + lenw < 4000000,
-                "script and witness len"
-            );
-        }
-    }
-
-    #[test]
-    fn test_p1() {
+    fn test_p() {
         let k = 2;
         let n = 1 << k;
         let rng = &mut test_rng();
@@ -247,7 +157,7 @@ mod test {
         let g1a = expect;
         let mut g1p = G1PointType::new(&mut assigner, &format!("{}", "test"));
         g1p.fill_with_data(G1PointData(g1a));
-        let (segments, a,b) = p1(&mut assigner, g1p, g1a);
+        let (segments, a,b) = p(&mut assigner, g1p, g1a);
 
         for segment in segments {
             let witness = segment.witness(&assigner);

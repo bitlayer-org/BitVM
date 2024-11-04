@@ -4,7 +4,7 @@ use crate::bn254::msm::hinted_msm_with_constant_bases_affine;
 use crate::chunker::check_q4::check_q4;
 use crate::chunker::elements::{DataType::G1PointData, ElementTrait, FrType, G2PointType};
 use crate::chunker::msm::chunk_hinted_msm_with_constant_bases_affine;
-use crate::chunker::p::p;
+use crate::chunker::p::make_chunk_p;
 use crate::chunker::{calc_f, verify_f};
 use crate::groth16::constants::{LAMBDA, P_POW3};
 use crate::groth16::offchain_checker::compute_c_wi;
@@ -168,7 +168,7 @@ fn verify_to_chunks<T: BCAssigner>(
 
     segments.extend(segment);
 
-    let (segment, tp_lst) = p(assigner, p1_type, p1, &proof, &vk);
+    let (segment, tp_lst) = make_chunk_p(assigner, p1_type, p1, &proof, &vk);
     segments.extend(segment);
 
     let (constants, c, c_inv, wi, p_lst, q4) = generate_f_arg(&public_inputs, &proof, &vk);
@@ -190,7 +190,8 @@ fn verify_to_chunks<T: BCAssigner>(
 #[cfg(test)]
 mod tests {
     use crate::chunker::assigner::DummyAssinger;
-    
+    // use crate::chunker::segment::Segment;
+
     use crate::chunker::verifier::verify_to_chunks;
     
     use crate::execute_script_with_inputs;
@@ -203,6 +204,11 @@ mod tests {
     use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
     use ark_std::{test_rng, UniformRand};
     
+    use ark_groth16::{VerifyingKey, ProvingKey};
+
+    use bitcoin::{
+        hashes::{sha256::Hash as Sha256, Hash},
+    };    
     use rand::{RngCore, SeedableRng};
 
     #[derive(Copy)]
@@ -272,6 +278,7 @@ mod tests {
 
         println!("segments number: {}", segments.len());
 
+        let count = 0;
         for (_, segment) in tqdm::tqdm(segments.iter().enumerate()) {
             let witness = segment.witness(&assigner);
             let script = segment.script(&assigner);
@@ -279,6 +286,9 @@ mod tests {
             let mut lenw = 0;
             for w in witness.iter() {
                 lenw += w.len();
+            }
+            if lenw+script.len()  < 1600000 {
+                println!("{count} segment {} witness {} script {} total {}", segment.name, lenw , script.len(), lenw+script.len());  
             }
             assert!(
                 script.len() + lenw < 4000000,
@@ -297,5 +307,73 @@ mod tests {
                 segment.name
             );
         }
+    }
+
+
+    #[test]
+    fn test_hinted_groth16_verifier_stable() {
+        type E = Bn254;
+        let k = 6;
+        let mut rng: rand::prelude::StdRng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let circuit: DummyCircuit<<ark_ec::bn::Bn<ark_bn254::Config> as Pairing>::ScalarField> = DummyCircuit::<<E as Pairing>::ScalarField> {
+            a: Some(<E as Pairing>::ScalarField::rand(&mut rng)),
+            b: Some(<E as Pairing>::ScalarField::rand(&mut rng)),
+            num_variables: 10,
+            num_constraints: 1 << k,
+        };
+        let (pk, vk) = Groth16::<E>::setup(circuit, &mut rng).unwrap();
+
+        // let mut segmentes = vec![];
+        let mut hashes = vec![];
+        let count = 2;
+        for i in 0..count {
+            println!("generate hash {}", i);
+            // let (hash, segment) = test_hinted_groth16_verifier_stable_tool();
+            let hash = test_hinted_groth16_verifier_stable_tool(&pk, &vk);
+
+            hashes.push(hash);
+            // segmentes.push(segment)
+        }
+        for i in 1..count {
+            assert_eq!(hashes[i].len() , hashes[i-1].len(), "test{} len {}", i,hashes[i].len());
+
+            for j in 0..hashes[i].len() {
+                    // assert_eq!(hashes[i][j] , hashes[i-1][j], "segment  {} {} name {}", i, j, segmentes[i][j].name);
+                    assert_eq!(hashes[i][j] , hashes[i-1][j], "segment  {} {} ", i, j);
+            }
+        }
+    }
+
+    // fn test_hinted_groth16_verifier_stable_tool() -> (Vec<Sha256>, Vec<Segment>) {
+        fn test_hinted_groth16_verifier_stable_tool( pk: &ProvingKey<Bn254>,vk: &VerifyingKey<Bn254>) -> Vec<Sha256> {
+            type E = Bn254;
+            let k = 6;
+        let mut rng: rand::prelude::StdRng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let circuit = DummyCircuit::<<E as Pairing>::ScalarField> {
+                a: Some(<E as Pairing>::ScalarField::rand(&mut rng)),
+                b: Some(<E as Pairing>::ScalarField::rand(&mut rng)),
+                num_variables: 10,
+                num_constraints: 1 << k,
+            };
+        let c = circuit.a.unwrap() * circuit.b.unwrap();
+
+        let proof = Groth16::<E>::prove(&pk, circuit, &mut rng).unwrap();
+
+        let mut assigner = DummyAssinger {};
+        let segments = verify_to_chunks(&mut assigner, &vec![c], &proof, &vk);
+
+        println!("segments number: {}", segments.len());
+
+        let mut hashes = vec![];
+        for (i, segment) in tqdm::tqdm(segments.iter().enumerate()) {
+            let script = segment.script(&assigner);
+            let hash = Sha256::hash(script.compile().as_bytes());
+            println!("segment {} {} hash {}", i, segment.name, hash.clone());
+
+            hashes.push(hash);
+        }
+
+        // (hashes, segments)
+        hashes
     }
 }

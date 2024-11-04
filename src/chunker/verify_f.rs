@@ -1,6 +1,7 @@
 use super::elements::Fq12Type;
 use super::{assigner::BCAssigner, segment::Segment};
-
+use crate::bn254::utils::Hint;
+use crate::bn254::fq::Fq;
 use crate::bn254::fq12::Fq12;
 use crate::bn254::utils::fq12_push_not_montgomery;
 use crate::groth16::constants::{LAMBDA, P_POW3};
@@ -22,6 +23,8 @@ pub fn verify_f<T: BCAssigner>(
     proof: &Proof<Bn254>,
     vk: &VerifyingKey<Bn254>,
 ) -> (Vec<Segment>, ark_bn254::Fq12) {
+    let mut hints = Vec::new();
+
     let scalars = [
         vec![<Bn254 as ark_Pairing>::ScalarField::ONE],
         public_inputs.clone(),
@@ -51,20 +54,35 @@ pub fn verify_f<T: BCAssigner>(
         f * wi * (c_inv.pow((exp).to_u64_digits()).inverse().unwrap())
     };
     assert_eq!(hint, c.pow(P_POW3.to_u64_digits()), "hint isn't correct!");
-    let script_lines = [
-        // Input stack: [final_f]
-        // check final_f == hint
-        fq12_push_not_montgomery(hint),
-        Fq12::equalverify(),
-        // script! {OP_TRUE},
-    ];
-    let mut script = script! {};
-    for script_line in script_lines {
-        script = script.push_script(script_line.compile());
-    }
+
+    hints.push(Hint::Fq(hint.c0.c0.c0));
+    hints.push(Hint::Fq(hint.c0.c0.c1));
+    hints.push(Hint::Fq(hint.c0.c1.c0));
+    hints.push(Hint::Fq(hint.c0.c1.c1));
+    hints.push(Hint::Fq(hint.c0.c2.c0));
+    hints.push(Hint::Fq(hint.c0.c2.c1));
+    hints.push(Hint::Fq(hint.c1.c0.c0));
+    hints.push(Hint::Fq(hint.c1.c0.c1));
+    hints.push(Hint::Fq(hint.c1.c1.c0));
+    hints.push(Hint::Fq(hint.c1.c1.c1));
+    hints.push(Hint::Fq(hint.c1.c2.c0));
+    hints.push(Hint::Fq(hint.c1.c2.c1));
+
+
+    let script = script! {
+        for _ in 0..12 {
+            for _ in 0..<Fq as crate::bn254::fp254impl::Fp254Impl>::N_LIMBS {
+                OP_DEPTH OP_1SUB OP_ROLL // hints
+            }
+        }
+        {Fq12::equalverify()}
+    };
+
 
     let mut segments = vec![];
-    let segment = Segment::new_with_name(format!("{}verify_f", prefix), script).add_parameter(&pa);
+    let segment = Segment::new_with_name(format!("{}verify_f", prefix), script)
+    .add_parameter(&pa)
+    .add_hint(hints);
 
     segments.push(segment);
     (segments, hint)
@@ -74,10 +92,6 @@ pub fn verify_f<T: BCAssigner>(
 mod test {
     use super::*;
     use crate::bn254::fp254impl::Fp254Impl;
-    
-    
-    
-    
     
     use crate::chunker::assigner::*;
     use crate::chunker::calc_f::*;
@@ -91,7 +105,6 @@ mod test {
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
 
-    
     use ark_ec::{CurveGroup, VariableBaseMSM};
     use ark_std::test_rng;
 
@@ -233,7 +246,7 @@ mod test {
     }
 
     #[test]
-    fn test_p() {
+    fn test_make_chunk_p() {
         let mut assigner = DummyAssinger {};
 
         type E = Bn254;
@@ -253,7 +266,7 @@ mod test {
 
         // let (hinted_groth16_verifier, hints) = Verifier::hinted_verify(&vec![c], &proof, &vk);
         let (g1a, g1p) = generate_p1(&mut assigner, &vec![c], &vk);
-        let (segments, plist) = p(&mut assigner, g1p, g1a, &proof, &vk);
+        let (segments, plist) = make_chunk_p(&mut assigner, g1p.clone(), g1a, &proof, &vk);
 
         println!("segments len {}", segments.len());
         for segment in segments {
@@ -309,7 +322,7 @@ mod test {
 
         // let (hinted_groth16_verifier, hints) = Verifier::hinted_verify(&vec![c], &proof, &vk);
         let (g1a, g1p) = generate_p1(&mut assigner, &vec![c], &vk);
-        let (segments, tp_lst) = p(&mut assigner, g1p, g1a, &proof, &vk);
+        let (segments, tp_lst) = make_chunk_p(&mut assigner, g1p, g1a, &proof, &vk);
 
         let (constants, c, c_inv, wi, p_lst, q4) = generate_f_arg(&vec![c], &proof, &vk);
         let (segments, fs, f) = calc_f(&mut assigner, tp_lst, constants, c, c_inv, wi, p_lst, q4);
@@ -425,7 +438,7 @@ mod test {
 
         // let (hinted_groth16_verifier, hints) = Verifier::hinted_verify(&vec![c], &proof, &vk);
         let (g1a, g1p) = generate_p1(&mut assigner, &vec![cx], &vk);
-        let (s, tp_lst) = p(&mut assigner, g1p, g1a, &proof, &vk);
+        let (s, tp_lst) = make_chunk_p(&mut assigner, g1p, g1a, &proof, &vk);
         println!("segments p len {}", s.len());
         segments.extend(s);
         // calc f = fs,f
