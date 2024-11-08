@@ -42,232 +42,113 @@ pub fn chunk_q4<T: BCAssigner>(
 
     // 2. looped double-add
     for i in (1..ark_bn254::Config::ATE_LOOP_COUNT.len()).rev() {
-        for j in 0..num_line_groups {
-            if j == num_constant {
-                let two_inv = ark_bn254::Fq::one().double().inverse().unwrap();
-                let three_div_two =
-                    (ark_bn254::Fq::one().double() + ark_bn254::Fq::one()) * two_inv;
-                let mut alpha = t4.x.square();
-                alpha /= t4.y;
-                alpha.mul_assign_by_fp(&three_div_two);
-                let bias_minus = alpha * t4.x - t4.y;
-                let x = alpha.square() - t4.x.double();
-                let y = bias_minus - alpha * x;
-                let t4x = ark_bn254::G2Affine::new(x, y);
+        let j = num_constant;
+        let two_inv = ark_bn254::Fq::one().double().inverse().unwrap();
+        let three_div_two =
+            (ark_bn254::Fq::one().double() + ark_bn254::Fq::one()) * two_inv;
+        let mut alpha = t4.x.square();
+        alpha /= t4.y;
+        alpha.mul_assign_by_fp(&three_div_two);
+        let bias_minus = alpha * t4.x - t4.y;
+        let x = alpha.square() - t4.x.double();
+        let y = bias_minus - alpha * x;
+        let t4x = ark_bn254::G2Affine::new(x, y);
 
-                let mut hints = vec![];
-                let (hinted_script0, hint) = hinted_check_tangent_line(
-                    t4,
-                    line_coeffs[num_lines - (i + 2)][j][0].1,
-                    line_coeffs[num_lines - (i + 2)][j][0].2,
-                );
-                hints.extend(hint);
+        let mut hints = vec![];
+        let (hinted_script0, hint) = hinted_check_tangent_line(
+            t4,
+            line_coeffs[num_lines - (i + 2)][j][0].1,
+            line_coeffs[num_lines - (i + 2)][j][0].2,
+        );
+        hints.extend(hint);
 
-                let (hinted_script1, hint) = hinted_affine_double_line(
-                    t4.x,
-                    line_coeffs[num_lines - (i + 2)][j][0].1,
-                    line_coeffs[num_lines - (i + 2)][j][0].2,
-                );
-                hints.extend(hint);
+        let (hinted_script1, hint) = hinted_affine_double_line(
+            t4.x,
+            line_coeffs[num_lines - (i + 2)][j][0].1,
+            line_coeffs[num_lines - (i + 2)][j][0].2,
+        );
+        hints.extend(hint);
 
-                let mut t4_update = G2PointType::new(assigner, &format!("T4_{}_double", i));
-                t4_update.fill_with_data(crate::chunker::elements::DataType::G2PointData(t4x));
-                let segment = Segment::new_with_name(
-                    format!("check and double_{}", i),
-                    script! {
-                        { Fq2::copy(2) }
-                        { Fq2::toaltstack() }
-                        // [t4 | t4.x]
-                        {hinted_script0}
-                        { Fq2::fromaltstack() }
-                        // [t4.x]
-                        {hinted_script1}
-                        // [t4']
-                    },
-                )
-                .add_parameter(&t4_acc)
-                .add_result(&t4_update)
-                .add_hint(hints);
+        let mut t4_update = G2PointType::new(assigner, &format!("T4_{}_double", i));
+        t4_update.fill_with_data(crate::chunker::elements::DataType::G2PointData(t4x));
+        let segment = Segment::new_with_name(
+            format!("check and double_{}", i),
+            script! {
+                { Fq2::copy(2) }
+                { Fq2::toaltstack() }
+                // [t4 | t4.x]
+                {hinted_script0}
+                { Fq2::fromaltstack() }
+                // [t4.x]
+                {hinted_script1}
+                // [t4']
+            },
+        )
+        .add_parameter(&t4_acc)
+        .add_result(&t4_update)
+        .add_hint(hints);
 
-                segments.push(segment);
+        segments.push(segment);
 
-                t4 = t4x;
-                t4_acc = t4_update;
-            }
-        }
+        t4 = t4x;
+        t4_acc = t4_update;
+            
 
         if ark_bn254::Config::ATE_LOOP_COUNT[i - 1] == 1
             || ark_bn254::Config::ATE_LOOP_COUNT[i - 1] == -1
         {
-            for j in 0..num_line_groups {
-                if j == num_constant {
-                    let mut script = script! {};
-                    let mut hints = vec![];
-
-                    let mut pm_q4 = q4;
-                    if ark_bn254::Config::ATE_LOOP_COUNT[i - 1] == -1 {
-                        pm_q4 = q4.neg();
-                        script = script.push_script(Fq2::neg(0).compile());
-                    }
-                    let alpha = (t4.y - pm_q4.y) / (t4.x - pm_q4.x);
-                    let bias_minus = alpha * t4.x - t4.y;
-                    let x = alpha.square() - t4.x - pm_q4.x;
-                    let y = bias_minus - alpha * x;
-                    let t4x = ark_bn254::G2Affine::new(x, y);
-
-                    let (hinted_script0, hint) = hinted_check_chord_line(
-                        t4,
-                        pm_q4,
-                        line_coeffs[num_lines - (i + 2)][j][1].1,
-                        line_coeffs[num_lines - (i + 2)][j][1].2,
-                    );
-                    hints.extend(hint);
-
-                    let (hinted_script1, hint) = hinted_affine_add_line(
-                        t4.x,
-                        q4.x,
-                        line_coeffs[num_lines - (i + 2)][j][1].1,
-                        line_coeffs[num_lines - (i + 2)][j][1].2,
-                    );
-                    hints.extend(hint);
-
-                    script = script.push_script(
-                        script! {
-                            // [t4, pm_q4]
-                            {Fq2::copy(2)}
-                            {Fq2::toaltstack()}
-                            {Fq2::copy(6)}
-                            {Fq2::toaltstack()}
-                            // [t4, pm_q4]
-                            {hinted_script0}
-                            {Fq2::fromaltstack()}
-                            {Fq2::fromaltstack()}
-                            // [t4.x, pm_q4.x]
-                            {hinted_script1}
-                            // [updated_t4]
-                        }
-                        .compile(),
-                    );
-
-                    let mut t4_update = G2PointType::new(assigner, &format!("T4_{}_add", i));
-                    t4_update.fill_with_data(crate::chunker::elements::DataType::G2PointData(t4x));
-                    let segment = Segment::new_with_name(format!("check and add{}", i), script)
-                        .add_parameter(&t4_acc)
-                        .add_parameter(&q4_input)
-                        .add_result(&t4_update)
-                        .add_hint(hints);
-                    segments.push(segment);
-
-                    t4 = t4x;
-                    t4_acc = t4_update;
-                }
-            }
-        }
-    }
-
-    // 3. phi_Q4
-    for j in 0..num_line_groups {
-        if j == num_constant {
-            let beta_12x = BigUint::from_str(
-                "21575463638280843010398324269430826099269044274347216827212613867836435027261",
-            )
-            .unwrap();
-            let beta_12y = BigUint::from_str(
-                "10307601595873709700152284273816112264069230130616436755625194854815875713954",
-            )
-            .unwrap();
-            let beta_12 = ark_bn254::Fq2::from_base_prime_field_elems([
-                ark_bn254::Fq::from(beta_12x.clone()),
-                ark_bn254::Fq::from(beta_12y.clone()),
-            ])
-            .unwrap();
-            let beta_13x = BigUint::from_str(
-                "2821565182194536844548159561693502659359617185244120367078079554186484126554",
-            )
-            .unwrap();
-            let beta_13y = BigUint::from_str(
-                "3505843767911556378687030309984248845540243509899259641013678093033130930403",
-            )
-            .unwrap();
-            let beta_13 = ark_bn254::Fq2::from_base_prime_field_elems([
-                ark_bn254::Fq::from(beta_13x.clone()),
-                ark_bn254::Fq::from(beta_13y.clone()),
-            ])
-            .unwrap();
-
+            let j = num_constant;
+            let mut script = script! {};
             let mut hints = vec![];
 
-            let mut q4y = q4.y;
-            q4y.conjugate_in_place();
-            let (q4y_mul_hinted_script, hint) = Fq2::hinted_mul(2, q4y, 0, beta_13);
-            hints.extend(hint);
-            q4y = q4y * beta_13;
-
-            let mut q4x = q4.x;
-            q4x.conjugate_in_place();
-            let (q4x_mul_hinted_script, hint) = Fq2::hinted_mul(2, q4x, 0, beta_12);
-            hints.extend(hint);
-            q4x = q4x * beta_12;
-
-            // ================================
-
-            let alpha = (t4.y - q4y) / (t4.x - q4x);
+            let mut pm_q4 = q4;
+            if ark_bn254::Config::ATE_LOOP_COUNT[i - 1] == -1 {
+                pm_q4 = q4.neg();
+                script = script.push_script(Fq2::neg(0).compile());
+            }
+            let alpha = (t4.y - pm_q4.y) / (t4.x - pm_q4.x);
             let bias_minus = alpha * t4.x - t4.y;
-            let x = alpha.square() - t4.x - q4x;
+            let x = alpha.square() - t4.x - pm_q4.x;
             let y = bias_minus - alpha * x;
             let t4x = ark_bn254::G2Affine::new(x, y);
-            let q4_new = ark_bn254::G2Affine::new(q4x, q4y);
 
-            let (check_hinted_script, hint) = hinted_check_chord_line(
+            let (hinted_script0, hint) = hinted_check_chord_line(
                 t4,
-                q4_new,
-                line_coeffs[num_lines - 2][j][0].1,
-                line_coeffs[num_lines - 2][j][0].2,
+                pm_q4,
+                line_coeffs[num_lines - (i + 2)][j][1].1,
+                line_coeffs[num_lines - (i + 2)][j][1].2,
             );
             hints.extend(hint);
 
-            let (add_hinted_script, hint) = hinted_affine_add_line(
+            let (hinted_script1, hint) = hinted_affine_add_line(
                 t4.x,
-                q4_new.x,
-                line_coeffs[num_lines - 2][j][0].1,
-                line_coeffs[num_lines - 2][j][0].2,
+                q4.x,
+                line_coeffs[num_lines - (i + 2)][j][1].1,
+                line_coeffs[num_lines - (i + 2)][j][1].2,
             );
             hints.extend(hint);
 
-            let script = script! {
-                // [t4, q4]
-                {Fq::neg(0)}
-                { Fq::push_dec_not_montgomery("2821565182194536844548159561693502659359617185244120367078079554186484126554") }
-                { Fq::push_dec_not_montgomery("3505843767911556378687030309984248845540243509899259641013678093033130930403") }
-                // [t4, q4.x -q4.y, beta13]
-                { q4y_mul_hinted_script }
-                { Fq2::toaltstack() }
+            script = script.push_script(
+                script! {
+                    // [t4, pm_q4]
+                    {Fq2::copy(2)}
+                    {Fq2::toaltstack()}
+                    {Fq2::copy(6)}
+                    {Fq2::toaltstack()}
+                    // [t4, pm_q4]
+                    {hinted_script0}
+                    {Fq2::fromaltstack()}
+                    {Fq2::fromaltstack()}
+                    // [t4.x, pm_q4.x]
+                    {hinted_script1}
+                    // [updated_t4]
+                }
+                .compile(),
+            );
 
-                {Fq::neg(0)}
-                // [t4, -q4.x]
-                { Fq::push_dec_not_montgomery("21575463638280843010398324269430826099269044274347216827212613867836435027261") }
-                { Fq::push_dec_not_montgomery("10307601595873709700152284273816112264069230130616436755625194854815875713954") }
-                // [t4, q4x, beta12]
-                { q4x_mul_hinted_script }
-                { Fq2::fromaltstack() }
-
-                // [t4, phi_q4]
-                {Fq2::copy(2)}
-                {Fq2::toaltstack()}
-                {Fq2::copy(6)}
-                {Fq2::toaltstack()}
-                // [t4, phi_q4]
-                {check_hinted_script}
-                {Fq2::fromaltstack()}
-                {Fq2::fromaltstack()}
-                // [t4.x, phi_q4.x]
-                {add_hinted_script}
-                // [updated_t4]
-            };
-
-            let mut t4_update = G2PointType::new(assigner, "T4_final_add");
+            let mut t4_update = G2PointType::new(assigner, &format!("T4_{}_add", i));
             t4_update.fill_with_data(crate::chunker::elements::DataType::G2PointData(t4x));
-            let segment = Segment::new_with_name("final check and add".into(), script)
+            let segment = Segment::new_with_name(format!("check and add{}", i), script)
                 .add_parameter(&t4_acc)
                 .add_parameter(&q4_input)
                 .add_result(&t4_update)
@@ -279,55 +160,169 @@ pub fn chunk_q4<T: BCAssigner>(
         }
     }
 
+    let j = num_constant;
+    // 3. phi_Q4
+    let beta_12x = BigUint::from_str(
+        "21575463638280843010398324269430826099269044274347216827212613867836435027261",
+    )
+    .unwrap();
+    let beta_12y = BigUint::from_str(
+        "10307601595873709700152284273816112264069230130616436755625194854815875713954",
+    )
+    .unwrap();
+    let beta_12 = ark_bn254::Fq2::from_base_prime_field_elems([
+        ark_bn254::Fq::from(beta_12x.clone()),
+        ark_bn254::Fq::from(beta_12y.clone()),
+    ])
+    .unwrap();
+    let beta_13x = BigUint::from_str(
+        "2821565182194536844548159561693502659359617185244120367078079554186484126554",
+    )
+    .unwrap();
+    let beta_13y = BigUint::from_str(
+        "3505843767911556378687030309984248845540243509899259641013678093033130930403",
+    )
+    .unwrap();
+    let beta_13 = ark_bn254::Fq2::from_base_prime_field_elems([
+        ark_bn254::Fq::from(beta_13x.clone()),
+        ark_bn254::Fq::from(beta_13y.clone()),
+    ])
+    .unwrap();
+
+    let mut hints3 = vec![];
+
+    let mut q4y = q4.y;
+    q4y.conjugate_in_place();
+    let (q4y_mul_hinted_script, hint) = Fq2::hinted_mul(2, q4y, 0, beta_13);
+    hints3.extend(hint);
+    q4y = q4y * beta_13;
+
+    let mut q4x = q4.x;
+    q4x.conjugate_in_place();
+    let (q4x_mul_hinted_script, hint) = Fq2::hinted_mul(2, q4x, 0, beta_12);
+    hints3.extend(hint);
+    q4x = q4x * beta_12;
+
+    // ================================
+
+    let alpha = (t4.y - q4y) / (t4.x - q4x);
+    let bias_minus = alpha * t4.x - t4.y;
+    let x = alpha.square() - t4.x - q4x;
+    let y = bias_minus - alpha * x;
+    let t4x = ark_bn254::G2Affine::new(x, y);
+    let q4_new = ark_bn254::G2Affine::new(q4x, q4y);
+
+    let (check_hinted_script, hint) = hinted_check_chord_line(
+        t4,
+        q4_new,
+        line_coeffs[num_lines - 2][j][0].1,
+        line_coeffs[num_lines - 2][j][0].2,
+    );
+    hints3.extend(hint);
+
+    let (add_hinted_script, hint) = hinted_affine_add_line(
+        t4.x,
+        q4_new.x,
+        line_coeffs[num_lines - 2][j][0].1,
+        line_coeffs[num_lines - 2][j][0].2,
+    );
+    hints3.extend(hint);
+
+    let script_phi_Q4 = script! {
+        // [t4, q4]
+        {Fq::neg(0)}
+        { Fq::push_dec_not_montgomery("2821565182194536844548159561693502659359617185244120367078079554186484126554") }
+        { Fq::push_dec_not_montgomery("3505843767911556378687030309984248845540243509899259641013678093033130930403") }
+        // [t4, q4.x -q4.y, beta13]
+        { q4y_mul_hinted_script }
+        { Fq2::toaltstack() }
+
+        {Fq::neg(0)}
+        // [t4, -q4.x]
+        { Fq::push_dec_not_montgomery("21575463638280843010398324269430826099269044274347216827212613867836435027261") }
+        { Fq::push_dec_not_montgomery("10307601595873709700152284273816112264069230130616436755625194854815875713954") }
+        // [t4, q4x, beta12]
+        { q4x_mul_hinted_script }
+        { Fq2::fromaltstack() }
+
+        // [t4, phi_q4]
+        {Fq2::copy(2)}
+        {Fq2::toaltstack()}
+        {Fq2::copy(6)}
+        {Fq2::toaltstack()}
+        // [t4, phi_q4]
+        {check_hinted_script}
+        {Fq2::fromaltstack()}
+        {Fq2::fromaltstack()}
+        // [t4.x, phi_q4.x]
+        {add_hinted_script}
+        // [updated_t4]
+    };
+
+    t4 = t4x;
+    // t4_acc = t4_update;
+
     // 4. phi_2_Q4 and Chord Check
+    let beta_22x = BigUint::from_str(
+        "21888242871839275220042445260109153167277707414472061641714758635765020556616",
+    )
+    .unwrap();
+    let beta_22y = BigUint::from_str("0").unwrap();
+    let beta_22 = ark_bn254::Fq2::from_base_prime_field_elems([
+        ark_bn254::Fq::from(beta_22x.clone()),
+        ark_bn254::Fq::from(beta_22y.clone()),
+    ])
+    .unwrap();
 
-    for j in 0..num_line_groups {
-        if j == num_constant {
-            let beta_22x = BigUint::from_str(
-                "21888242871839275220042445260109153167277707414472061641714758635765020556616",
-            )
-            .unwrap();
-            let beta_22y = BigUint::from_str("0").unwrap();
-            let beta_22 = ark_bn254::Fq2::from_base_prime_field_elems([
-                ark_bn254::Fq::from(beta_22x.clone()),
-                ark_bn254::Fq::from(beta_22y.clone()),
-            ])
-            .unwrap();
+    let mut hints4 = vec![];
 
-            let mut hints = vec![];
+    let (mul_x_hinted_script, hint) = Fq2::hinted_mul(2, q4.x, 0, beta_22);
+    hints4.extend(hint);
 
-            let (mul_x_hinted_script, hint) = Fq2::hinted_mul(2, q4.x, 0, beta_22);
-            hints.extend(hint);
+    let q4_new = ark_bn254::G2Affine::new(q4.x * beta_22, q4.y);
 
-            let q4_new = ark_bn254::G2Affine::new(q4.x * beta_22, q4.y);
+    let (check_hinted_script, hint) = hinted_check_chord_line(
+        t4,
+        q4_new,
+        line_coeffs[num_lines - 1][j][0].1,
+        line_coeffs[num_lines - 1][j][0].2,
+    );
+    hints4.extend(hint);
 
-            let (check_hinted_script, hint) = hinted_check_chord_line(
-                t4,
-                q4_new,
-                line_coeffs[num_lines - 1][j][0].1,
-                line_coeffs[num_lines - 1][j][0].2,
-            );
-            hints.extend(hint);
+    let script_phi_2_Q4 = script! {
+        // [t4, q4]
+        {Fq2::toaltstack()}
+        // [t4, q4x | q4y]
+        { Fq::push_dec_not_montgomery("21888242871839275220042445260109153167277707414472061641714758635765020556616") }
+        { Fq::push_zero() }
+        {mul_x_hinted_script}
+        { Fq2::fromaltstack() }
+        // [t4, q4x', q4y]
+        {check_hinted_script}
+    };
 
-            let script = script! {
-                // [t4, q4]
-                {Fq2::toaltstack()}
-                // [t4, q4x | q4y]
-                { Fq::push_dec_not_montgomery("21888242871839275220042445260109153167277707414472061641714758635765020556616") }
-                { Fq::push_zero() }
-                {mul_x_hinted_script}
-                { Fq2::fromaltstack() }
-                // [t4, q4x', q4y]
-                {check_hinted_script}
-            };
+    let script = script! {
+        //[t4(4),q4(4)]
+        {Fq2::copy(2)}
+        {Fq2::copy(2)}
+        {Fq2::toaltstack()}
+        {Fq2::toaltstack()}
+        {script_phi_Q4}
+        {Fq2::fromaltstack()}
+        {Fq2::fromaltstack()}
+        {script_phi_2_Q4}
+    };
 
-            let segment = Segment::new_with_name("final_final check".into(), script)
-                .add_parameter(&t4_acc)
-                .add_parameter(&q4_input)
-                .add_hint(hints);
-            segments.push(segment);
-        }
-    }
+    let mut hints = vec![];
+    hints.extend(hints3);
+    hints.extend(hints4);
+    
+    let segment = Segment::new_with_name("final_final add and check".into(), script.clone())
+        .add_parameter(&t4_acc)
+        .add_parameter(&q4_input)                
+        // .add_result(&t4_update)
+        .add_hint(hints.clone());
+    segments.push(segment);
 
     segments
 }
