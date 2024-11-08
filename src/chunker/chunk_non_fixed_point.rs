@@ -19,7 +19,6 @@ use super::segment::Segment;
 pub fn chunk_q4<T: BCAssigner>(
     constants: Vec<G2Prepared>,
     q4: ark_bn254::G2Affine,
-    q4_input: G2PointType,
     assigner: &mut T,
 ) -> Vec<Segment> {
     assert_eq!(constants.len(), 4);
@@ -28,17 +27,18 @@ pub fn chunk_q4<T: BCAssigner>(
     let line_coeffs = collect_line_coeffs(constants);
     let num_lines = line_coeffs.len();
 
+    let script0 = script! {
+        for _ in 0..<Fq as crate::bn254::fp254impl::Fp254Impl>::N_LIMBS {
+            OP_DEPTH OP_1SUB OP_ROLL // hints
+        }
+    };
+
     let mut segments = vec![];
 
     // 1. copy q4 to t4
     let mut t4 = q4;
-
     let mut t4_acc = G2PointType::new(assigner, "t4_init");
-    t4_acc.fill_with_data(crate::chunker::elements::DataType::G2PointData(t4));
-    let segment = Segment::new_with_name("copy_q4_to_t4".into(), script! {})
-        .add_parameter(&q4_input)
-        .add_result(&t4_acc);
-    segments.push(segment);
+    t4_acc.fill_with_data(crate::chunker::elements::DataType::G2PointData(q4));
 
     // 2. looped double-add
     for i in (1..ark_bn254::Config::ATE_LOOP_COUNT.len()).rev() {
@@ -98,8 +98,19 @@ pub fn chunk_q4<T: BCAssigner>(
             || ark_bn254::Config::ATE_LOOP_COUNT[i - 1] == -1
         {
             let j = num_constant;
-            let mut script = script! {};
+            let mut script = script! {
+                //[t4]
+                {script0.clone()}
+                {script0.clone()}
+                {script0.clone()}
+                {script0.clone()}
+                // [t4, q4]
+            };
             let mut hints = vec![];
+            hints.push(Hint::Fq(q4.x.c0));
+            hints.push(Hint::Fq(q4.x.c1));
+            hints.push(Hint::Fq(q4.y.c0));
+            hints.push(Hint::Fq(q4.y.c1));
 
             let mut pm_q4 = q4;
             if ark_bn254::Config::ATE_LOOP_COUNT[i - 1] == -1 {
@@ -150,7 +161,7 @@ pub fn chunk_q4<T: BCAssigner>(
             t4_update.fill_with_data(crate::chunker::elements::DataType::G2PointData(t4x));
             let segment = Segment::new_with_name(format!("check and add{}", i), script)
                 .add_parameter(&t4_acc)
-                .add_parameter(&q4_input)
+                // .add_parameter(&q4_input)
                 .add_result(&t4_update)
                 .add_hint(hints);
             segments.push(segment);
@@ -302,25 +313,34 @@ pub fn chunk_q4<T: BCAssigner>(
     };
 
     let script = script! {
+        //[t4(4)]
+        {script0.clone()}
+        {script0.clone()}
+        {script0.clone()}
+        {script0.clone()}
         //[t4(4),q4(4)]
         {Fq2::copy(2)}
         {Fq2::copy(2)}
         {Fq2::toaltstack()}
         {Fq2::toaltstack()}
+        //[t4(4),q4(4) | q4(4)]
         {script_phi_Q4}
         {Fq2::fromaltstack()}
         {Fq2::fromaltstack()}
+         //[t4(4),q4(4)]
         {script_phi_2_Q4}
     };
 
     let mut hints = vec![];
+    hints.push(Hint::Fq(q4.x.c0));
+    hints.push(Hint::Fq(q4.x.c1));
+    hints.push(Hint::Fq(q4.y.c0));
+    hints.push(Hint::Fq(q4.y.c1));
     hints.extend(hints3);
     hints.extend(hints4);
     
     let segment = Segment::new_with_name("final_final add and check".into(), script.clone())
         .add_parameter(&t4_acc)
-        .add_parameter(&q4_input)                
-        // .add_result(&t4_update)
         .add_hint(hints.clone());
     segments.push(segment);
 
@@ -360,7 +380,6 @@ mod tests {
         let segments = chunk_q4(
             [q1_prepared, q2_prepared, q3_prepared, q4_prepared].to_vec(),
             q4,
-            q4_input,
             &mut assigner,
         );
 
@@ -375,14 +394,16 @@ mod tests {
             let witness = segment.witness(&assigner);
             let script = segment.script(&assigner);
 
-            let hash1 = Sha256::hash(segment.script.clone().compile().as_bytes());
-            let hash2 = Sha256::hash(script.clone().compile().as_bytes());
-            println!("segment {} hash {} {} ", segment.name, hash1.clone(), hash2.clone());
+            // let hash1 = Sha256::hash(segment.script.clone().compile().as_bytes());
+            // let hash2 = Sha256::hash(script.clone().compile().as_bytes());
+            // println!("segment {} hash {} {} ", segment.name, hash1.clone(), hash2.clone());
 
             let mut lenw = 0;
             for w in witness.iter() {
                 lenw += w.len();
             }
+            println!("segment script {} size {} witness size {} total {} ori {}", segment.name, script.len(), lenw, script.len() + lenw, segment.script.clone().len());
+
             assert!(
                 script.len() + lenw < 4000000,
                 "script and witness len is over 4M {}",

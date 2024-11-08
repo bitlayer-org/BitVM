@@ -106,7 +106,7 @@ fn groth16_verify_to_segments<T: BCAssigner>(
 
     let mut q4_input = G2PointType::new(assigner, "q4");
     q4_input.fill_with_data(crate::chunker::elements::DataType::G2PointData(q4));
-    let segment = chunk_q4(q_prepared.to_vec(), q4, q4_input, assigner);
+    let segment = chunk_q4(q_prepared.to_vec(), q4, assigner);
 
     segments.extend(segment);
 
