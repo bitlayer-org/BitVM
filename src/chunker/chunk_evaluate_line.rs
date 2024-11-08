@@ -5,6 +5,7 @@ use super::elements::{
 use super::{assigner::BCAssigner, segment::Segment};
 use crate::bn254::{ell_coeffs::EllCoeff, fp254impl::Fp254Impl, fq::Fq, fq2::Fq2,fq12::Fq12};
 use crate::bn254::curves::{G1Affine, G2Affine};
+use crate::bn254::utils::Hint;
 use crate::treepp::*;
 use ark_ff::{AdditiveGroup, Field};
 
@@ -21,7 +22,12 @@ pub fn chunk_evaluate_line_wrapper<T: BCAssigner>(
     let mut pxy = Fq2Type::new(assigner, &format!("{}{}", prefix, "xy"));
     pxy.fill_with_data(Fq2Data(ark_bn254::Fq2::new(x,y)));
 
-    chunk_evaluate_line(assigner, prefix, pf, pxy, f, x, y, constant)
+    let (segments1, f1) = hinted_chunk_evaluate_line(assigner, prefix, pf.clone(), pxy.clone(), f, x, y, constant);
+    let (segments2, f2) = chunk_evaluate_line(assigner, prefix, pf, pxy, f, x, y, constant);
+    let mut segments = vec![];
+    segments.extend(segments1);
+    segments.extend(segments2);
+    (segments, f1)
 }
 
 pub fn chunk_evaluate_line<T: BCAssigner>(
@@ -114,6 +120,63 @@ pub fn chunk_evaluate_line<T: BCAssigner>(
 
     (vec![segment0, segment1], tc)
 }
+
+
+pub fn hinted_chunk_evaluate_line<T: BCAssigner>(
+    assigner: &mut T,
+    prefix: &str,
+    pf: Fq12Type,
+    pxy: Fq2Type,
+    f: ark_bn254::Fq12,
+    x: ark_bn254::Fq,
+    y: ark_bn254::Fq,
+    constant: &EllCoeff,
+) -> (Vec<Segment>, Fq12Type) {
+    assert_eq!(constant.0, ark_bn254::Fq2::ONE);
+    let mut c1 = constant.1;
+    c1.mul_assign_by_fp(&x);
+    let mut c2 = constant.2;
+    c2.mul_assign_by_fp(&y);
+
+    let mut f1 = f;
+    f1.mul_by_034(&constant.0, &c1, &c2);
+    let c = f1;
+    let mut tc = Fq12Type::new(assigner, &format!("{}{}", prefix, "c"));
+    tc.fill_with_data(Fq12Data(c));
+
+    let (script_1, hint_1) = Fq12::hinted_mul_by_34(f, c1, c2);
+    
+    let mut hints = vec![];
+    hints.push(Hint::Fq(c1.c0));
+    hints.push(Hint::Fq(c1.c1));
+    hints.push(Hint::Fq(c2.c0));
+    hints.push(Hint::Fq(c2.c1));
+    hints.extend(hint_1);
+
+    let script0 = script! {
+        for _ in 0..<Fq as crate::bn254::fp254impl::Fp254Impl>::N_LIMBS {
+            OP_DEPTH OP_1SUB OP_ROLL // hints
+        }
+    };
+
+    let segment1 = Segment::new_with_name(format!("{}seg2", prefix), 
+        script! {
+            // [f]
+            {script0.clone()}
+            {script0.clone()}
+            // [f, c1, c2]
+            {script0.clone()}
+            {script0.clone()}
+            {script_1}
+        }
+        )
+        .add_parameter(&pf)
+        .add_result(&tc)
+        .add_hint(hints);
+
+    (vec![segment1], tc)
+}
+
 
 #[cfg(test)]
 mod test {
