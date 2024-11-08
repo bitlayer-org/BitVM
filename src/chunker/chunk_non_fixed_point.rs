@@ -33,10 +33,14 @@ pub fn chunk_q4<T: BCAssigner>(
         }
     };
 
-    let mut segments = vec![];
+    let max_pool_size : usize = 2;
+    let mut hints_pool: Vec<Hint> = Vec::new();
+    let mut scripts_pool: Vec<Script> = vec![];
+    let mut segments: Vec<Segment> = vec![];
 
     // 1. copy q4 to t4
     let mut t4 = q4;
+    let mut t4x = t4;
     let mut t4_acc = G2PointType::new(assigner, "t4_init");
     t4_acc.fill_with_data(crate::chunker::elements::DataType::G2PointData(q4));
 
@@ -52,53 +56,53 @@ pub fn chunk_q4<T: BCAssigner>(
         let bias_minus = alpha * t4.x - t4.y;
         let x = alpha.square() - t4.x.double();
         let y = bias_minus - alpha * x;
-        let t4x = ark_bn254::G2Affine::new(x, y);
+        t4x = ark_bn254::G2Affine::new(x, y);
 
-        let mut hints = vec![];
+        let mut hints_cd = vec![];
         let (hinted_script0, hint) = hinted_check_tangent_line(
             t4,
             line_coeffs[num_lines - (i + 2)][j][0].1,
             line_coeffs[num_lines - (i + 2)][j][0].2,
         );
-        hints.extend(hint);
+        hints_cd.extend(hint);
 
         let (hinted_script1, hint) = hinted_affine_double_line(
             t4.x,
             line_coeffs[num_lines - (i + 2)][j][0].1,
             line_coeffs[num_lines - (i + 2)][j][0].2,
         );
-        hints.extend(hint);
+        hints_cd.extend(hint);
 
-        let mut t4_update = G2PointType::new(assigner, &format!("T4_{}_double", i));
-        t4_update.fill_with_data(crate::chunker::elements::DataType::G2PointData(t4x));
-        let segment = Segment::new_with_name(
-            format!("check and double_{}", i),
-            script! {
-                { Fq2::copy(2) }
-                { Fq2::toaltstack() }
-                // [t4 | t4.x]
-                {hinted_script0}
-                { Fq2::fromaltstack() }
-                // [t4.x]
-                {hinted_script1}
-                // [t4']
-            },
-        )
-        .add_parameter(&t4_acc)
-        .add_result(&t4_update)
-        .add_hint(hints);
+        let script_cd = script! {
+            { Fq2::copy(2) }
+            { Fq2::toaltstack() }
+            // [t4 | t4.x]
+            {hinted_script0}
+            { Fq2::fromaltstack() }
+            // [t4.x]
+            {hinted_script1}
+            // [t4']
+        };
 
-        segments.push(segment);
+        hints_pool.extend(hints_cd);
+        scripts_pool.push(script_cd);
 
-        t4 = t4x;
-        t4_acc = t4_update;
+        if scripts_pool.len() == max_pool_size {
+            let (segment, t4_update) = make_chunk(assigner, &format!("check_q4_cd_{}",i), &t4_acc, t4x, &scripts_pool, &hints_pool);
+            segments.push(segment);
+            t4_acc = t4_update;  
+              
+            hints_pool = vec![];
+            scripts_pool = vec![];
+        }
             
+        t4 = t4x;
 
         if ark_bn254::Config::ATE_LOOP_COUNT[i - 1] == 1
             || ark_bn254::Config::ATE_LOOP_COUNT[i - 1] == -1
         {
             let j = num_constant;
-            let mut script = script! {
+            let mut script_ca = script! {
                 //[t4]
                 {script0.clone()}
                 {script0.clone()}
@@ -106,22 +110,22 @@ pub fn chunk_q4<T: BCAssigner>(
                 {script0.clone()}
                 // [t4, q4]
             };
-            let mut hints = vec![];
-            hints.push(Hint::Fq(q4.x.c0));
-            hints.push(Hint::Fq(q4.x.c1));
-            hints.push(Hint::Fq(q4.y.c0));
-            hints.push(Hint::Fq(q4.y.c1));
+            let mut hints_ca = vec![];
+            hints_ca.push(Hint::Fq(q4.x.c0));
+            hints_ca.push(Hint::Fq(q4.x.c1));
+            hints_ca.push(Hint::Fq(q4.y.c0));
+            hints_ca.push(Hint::Fq(q4.y.c1));
 
             let mut pm_q4 = q4;
             if ark_bn254::Config::ATE_LOOP_COUNT[i - 1] == -1 {
                 pm_q4 = q4.neg();
-                script = script.push_script(Fq2::neg(0).compile());
+                script_ca = script_ca.push_script(Fq2::neg(0).compile());
             }
             let alpha = (t4.y - pm_q4.y) / (t4.x - pm_q4.x);
             let bias_minus = alpha * t4.x - t4.y;
             let x = alpha.square() - t4.x - pm_q4.x;
             let y = bias_minus - alpha * x;
-            let t4x = ark_bn254::G2Affine::new(x, y);
+            t4x = ark_bn254::G2Affine::new(x, y);
 
             let (hinted_script0, hint) = hinted_check_chord_line(
                 t4,
@@ -129,7 +133,7 @@ pub fn chunk_q4<T: BCAssigner>(
                 line_coeffs[num_lines - (i + 2)][j][1].1,
                 line_coeffs[num_lines - (i + 2)][j][1].2,
             );
-            hints.extend(hint);
+            hints_ca.extend(hint);
 
             let (hinted_script1, hint) = hinted_affine_add_line(
                 t4.x,
@@ -137,9 +141,9 @@ pub fn chunk_q4<T: BCAssigner>(
                 line_coeffs[num_lines - (i + 2)][j][1].1,
                 line_coeffs[num_lines - (i + 2)][j][1].2,
             );
-            hints.extend(hint);
+            hints_ca.extend(hint);
 
-            script = script.push_script(
+            script_ca = script_ca.push_script(
                 script! {
                     // [t4, pm_q4]
                     {Fq2::copy(2)}
@@ -157,19 +161,27 @@ pub fn chunk_q4<T: BCAssigner>(
                 .compile(),
             );
 
-            let mut t4_update = G2PointType::new(assigner, &format!("T4_{}_add", i));
-            t4_update.fill_with_data(crate::chunker::elements::DataType::G2PointData(t4x));
-            let segment = Segment::new_with_name(format!("check and add{}", i), script)
-                .add_parameter(&t4_acc)
-                // .add_parameter(&q4_input)
-                .add_result(&t4_update)
-                .add_hint(hints);
-            segments.push(segment);
+            hints_pool.extend(hints_ca);
+            scripts_pool.push(script_ca);
+
+            if scripts_pool.len() == max_pool_size || i == 1 {
+                let (segment, t4_update) = make_chunk(assigner, &format!("check_q4_ca_{}",i), &t4_acc, t4x, &scripts_pool, &hints_pool);
+                segments.push(segment);
+                t4_acc = t4_update;  
+              
+                hints_pool = vec![];
+                scripts_pool = vec![];
+            }
 
             t4 = t4x;
-            t4_acc = t4_update;
-        }
+        } 
     }
+    if scripts_pool.len() > 0{
+        let (segment, t4_update) = make_chunk(assigner, &format!("check_q4_u"), &t4_acc, t4x, &scripts_pool, &hints_pool);
+        segments.push(segment);
+        t4_acc = t4_update;  
+    }
+
 
     let j = num_constant;
     // 3. phi_Q4
@@ -345,6 +357,32 @@ pub fn chunk_q4<T: BCAssigner>(
     segments.push(segment);
 
     segments
+}
+
+fn make_chunk<T: BCAssigner>(
+    assigner: &mut T,
+    prefix: &str,
+    t4_acc: &G2PointType,
+    t4x: ark_bn254::G2Affine,
+    scripts_pool: &Vec<Script>,
+    hints_pool: &Vec<Hint>) -> (Segment, G2PointType){
+    let mut t4_update = G2PointType::new(assigner, &format!("{}_t4_update", prefix));
+    t4_update.fill_with_data(crate::chunker::elements::DataType::G2PointData(t4x));
+    
+    let mut script = script! {};
+    for script_line in scripts_pool.clone() {
+        script = script.push_script(script_line.compile());
+    }
+    
+    let segment = Segment::new_with_name(
+        format!("{}_seg", prefix),
+        script,
+    )
+    .add_parameter(t4_acc)
+    .add_result(&t4_update)
+    .add_hint(hints_pool.clone());
+
+    (segment, t4_update)
 }
 
 #[cfg(test)]
