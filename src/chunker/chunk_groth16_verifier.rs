@@ -244,9 +244,10 @@ mod tests {
             for w in witness.iter() {
                 lenw += w.len();
             }
+            println!("segment script {} size {} witness size {} total {} ori {}", segment.name, script.len(), lenw, script.len() + lenw, segment.script.clone().len());
             assert!(
-                script.len() + lenw < 4000000,
-                "script and witness len is over 4M {}",
+                script.len() + lenw < 3980000,
+                "script and witness len is over 3.98M {}",
                 segment.name
             );
 
