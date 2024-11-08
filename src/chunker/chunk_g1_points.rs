@@ -18,31 +18,12 @@ pub fn g1_points<T: BCAssigner>(
     assigner: &mut T,
     g1p: G1PointType,
     g1a: ark_bn254::G1Affine,
-    proof: &Proof<Bn254>,
-    vk: &VerifyingKey<Bn254>,
-) -> (Vec<Segment>, Vec<Fq2Type>) {
+) -> (Vec<Segment>, Fq2Type) {
     let mut segments = vec![];
-
-    let ( p2, p3, p4) = (proof.c, vk.alpha_g1, proof.a);
-    let mut g2p = G1PointType::new(assigner, &format!("{}", "F_p2_init"));
-    g2p.fill_with_data(G1PointData(p2));
-    let mut g3p = G1PointType::new(assigner, &format!("{}", "F_p3_init"));
-    g3p.fill_with_data(G1PointData(p3));
-    let mut g4p = G1PointType::new(assigner, &format!("{}", "F_p4_init"));
-    g4p.fill_with_data(G1PointData(p4));
-
     let (s1, a1) = make_p(assigner,"F_p1_im".to_owned(), g1p, g1a);
-    let (s2, a2) = make_p(assigner,"F_p2_im".to_owned(), g2p, p2);
-    let (s3, a3) = make_p(assigner,"F_p3_im".to_owned(), g3p, p3);
-    let (s4, a4) = make_p(assigner,"F_p4_im".to_owned(), g4p, p4);
 
     segments.extend(s1);
-    segments.extend(s2);
-    segments.extend(s3);
-    segments.extend(s4);
-
-    let im_var_p = vec![a1, a2, a3, a4];
-    (segments, im_var_p)
+    (segments, a1)
 }
 
 fn make_p<T: BCAssigner>(

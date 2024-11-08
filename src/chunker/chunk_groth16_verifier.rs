@@ -87,12 +87,12 @@ fn groth16_verify_to_segments<T: BCAssigner>(
 
     segments.extend(segment);
 
-    let (segment, tp_lst) = g1_points(assigner, p1_type, p1, &proof, &vk);
+    let (segment, p1_input) = g1_points(assigner, p1_type, p1);
     segments.extend(segment);
 
     let (segment, fs, f) = chunk_accumulator::chunk_accumulator(
         assigner,
-        tp_lst,
+        p1_input,
         q_prepared.to_vec(),
         c,
         c_inv,

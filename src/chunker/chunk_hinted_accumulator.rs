@@ -257,7 +257,7 @@ mod test {
 
         // let (hinted_groth16_verifier, hints) = Verifier::hinted_verify(&vec![c], &proof, &vk);
         let (g1a, g1p) = generate_p1(&mut assigner, &vec![c], &vk);
-        let (segments, plist) = g1_points(&mut assigner, g1p, g1a, &proof, &vk);
+        let (segments, plist) = g1_points(&mut assigner, g1p, g1a);
 
         println!("segments len {}", segments.len());
         for segment in segments {
@@ -313,7 +313,7 @@ mod test {
 
         // let (hinted_groth16_verifier, hints) = Verifier::hinted_verify(&vec![c], &proof, &vk);
         let (g1a, g1p) = generate_p1(&mut assigner, &vec![c], &vk);
-        let (segments, tp_lst) = g1_points(&mut assigner, g1p, g1a, &proof, &vk);
+        let (segments, tp_lst) = g1_points(&mut assigner, g1p, g1a);
 
         let (constants, c, c_inv, wi, p_lst, q4) = generate_f_arg(&vec![c], &proof, &vk);
         let (segments, fs, f) =

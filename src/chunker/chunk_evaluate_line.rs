@@ -22,7 +22,7 @@ pub fn chunk_evaluate_line_wrapper<T: BCAssigner>(
     let mut pxy = Fq2Type::new(assigner, &format!("{}{}", prefix, "xy"));
     pxy.fill_with_data(Fq2Data(ark_bn254::Fq2::new(x,y)));
 
-    let (segments1, f1) = hinted_chunk_evaluate_line(assigner, prefix, pf.clone(), pxy.clone(), f, x, y, constant);
+    let (segments1, f1) = hinted_chunk_evaluate_line(assigner, prefix, pf.clone(), f, x, y, constant);
     let (segments2, f2) = chunk_evaluate_line(assigner, prefix, pf, pxy, f, x, y, constant);
     let mut segments = vec![];
     segments.extend(segments1);
@@ -126,7 +126,6 @@ pub fn hinted_chunk_evaluate_line<T: BCAssigner>(
     assigner: &mut T,
     prefix: &str,
     pf: Fq12Type,
-    pxy: Fq2Type,
     f: ark_bn254::Fq12,
     x: ark_bn254::Fq,
     y: ark_bn254::Fq,

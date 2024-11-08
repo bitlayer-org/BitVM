@@ -18,7 +18,7 @@ use ark_ff::Field;
 
 pub fn chunk_accumulator<T: BCAssigner>(
     assigner: &mut T,
-    im_var_p: Vec<Fq2Type>,
+    p1_input: Fq2Type,
     constants: Vec<G2Prepared>,
     c: ark_bn254::Fq12,
     c_inv: ark_bn254::Fq12,
@@ -104,12 +104,11 @@ pub fn chunk_accumulator<T: BCAssigner>(
                 assigner,
                 format!("F_{}_mul_c_1p{}", i, j),
                 param_f,
-                im_var_p[j].clone(),
+                if j==0 {Some(p1_input.clone())}else{None},
                 f,
                 -p.x / p.y,
                 p.y.inverse().unwrap(),
                 coeffs,
-                j
             );
             segments.extend(s);
             param_f = r;
@@ -134,12 +133,11 @@ pub fn chunk_accumulator<T: BCAssigner>(
                     assigner,
                     format!("F_{}_mul_c_2p{}", i, j),
                     param_f,
-                    im_var_p[j].clone(),
+                    if j==0 {Some(p1_input.clone())}else{None},
                     f,
                     -p.x / p.y,
                     p.y.inverse().unwrap(),
                     coeffs,
-                    j
                 );
                 segments.extend(s);
                 param_f = r;
@@ -233,12 +231,11 @@ pub fn chunk_accumulator<T: BCAssigner>(
             assigner,
             format!("F_final_1p{}", j),
             param_f,
-            im_var_p[j].clone(),
+            if j==0 {Some(p1_input.clone())}else{None},
             f,
             -p.x / p.y,
             p.y.inverse().unwrap(),
             coeffs,
-            j
         );
 
         segments.extend(s);
@@ -261,12 +258,11 @@ pub fn chunk_accumulator<T: BCAssigner>(
             assigner,
             format!("F_final_2p{}", j),
             param_f,
-            im_var_p[j].clone(),
+            if j==0 {Some(p1_input.clone())}else{None},
             f,
             -p.x / p.y,
             p.y.inverse().unwrap(),
             coeffs,
-            j
         );
 
         segments.extend(s);
@@ -317,20 +313,19 @@ pub fn make_chunk_ell<T: BCAssigner>(
     assigner: &mut T,
     fn_name: String,
     pf: Fq12Type,
-    pxy: Fq2Type,
+    pxy: Option<Fq2Type>,
     f: ark_bn254::Fq12,
     x: ark_bn254::Fq,
     y: ark_bn254::Fq,
     constant: &EllCoeff,
-    index:usize,
 ) -> (Vec<Segment>, Fq12Type) {
     let mut segments = vec![];
 
     let (segments_mul, c) = 
-    if index==0 {
-        chunk_evaluate_line(assigner, &fn_name, pf, pxy, f, x, y, constant) 
+    if let Some(xy) = pxy {
+        chunk_evaluate_line(assigner, &fn_name, pf, xy, f, x, y, constant) 
     } else {
-        hinted_chunk_evaluate_line(assigner, &fn_name, pf, pxy, f, x, y, constant)
+        hinted_chunk_evaluate_line(assigner, &fn_name, pf, f, x, y, constant)
     };
     segments.extend(segments_mul);
 
