@@ -34,7 +34,7 @@ pub fn chunk_hinted_scalar_mul_by_constant<T: BCAssigner>(
     let mut loop_scripts = Vec::new();
     let mut i = 0;
     // options: i_step = 2-15
-    let i_step = 12;
+    let i_step = 14;
 
     // precomputed lookup table (affine)
     let mut p_mul: Vec<ark_bn254::G1Affine> = Vec::new();
@@ -245,8 +245,8 @@ mod tests {
 
     #[test]
     fn test_dfs() {
-        let depth = 12;
-        let i_step = 12;
+        let depth = 14;
+        let i_step = 14;
 
         let rng = &mut test_rng();
         let p = ark_bn254::G1Projective::rand(rng).into_affine();
@@ -288,7 +288,7 @@ mod tests {
 
         let q = bases[0].mul(scalars[0]).into_affine();
         println!("debug: expected res:{:?}", q);
-        let (inner_coeffs, _) = prepare_msm_input(&bases, &scalars, 12);
+        let (inner_coeffs, _) = prepare_msm_input(&bases, &scalars, 14);
 
         let mut scalar_type = FrType::new(&mut assigner, "init");
         scalar_type.fill_with_data(crate::chunker::elements::DataType::FrData(scalars[0]));

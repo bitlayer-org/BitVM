@@ -29,7 +29,7 @@ pub fn chunk_hinted_msm_with_constant_bases_affine<T: BCAssigner>(
     let mut segments = vec![];
 
     let len = bases.len();
-    let i_step = 12_u32;
+    let i_step = 14_u32;
     let (inner_coeffs, outer_coeffs) = prepare_msm_input(bases, scalars, i_step);
 
     let mut type_acc = G1PointType::new(assigner, "msm_init");
