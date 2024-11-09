@@ -8,26 +8,27 @@ use crate::bn254::curves::{G1Affine, G2Affine};
 use crate::bn254::utils::Hint;
 use crate::treepp::*;
 use ark_ff::{AdditiveGroup, Field};
+use core::ops::Neg;
+
 
 pub fn chunk_evaluate_line_wrapper<T: BCAssigner>(
     assigner: &mut T,
     prefix: &str,
     f: ark_bn254::Fq12,
-    x: ark_bn254::Fq,
-    y: ark_bn254::Fq,
+    p: ark_bn254::G1Affine,
     constant: &EllCoeff,
-) -> (Vec<Segment>, Fq12Type) {
+) -> (Vec<Segment>, Fq12Type, ark_bn254::Fq12) {
     let mut pf = Fq12Type::new(assigner, &format!("{}{}", prefix, "f"));
     pf.fill_with_data(Fq12Data(f));
     let mut pxy = Fq2Type::new(assigner, &format!("{}{}", prefix, "xy"));
-    pxy.fill_with_data(Fq2Data(ark_bn254::Fq2::new(x,y)));
+    pxy.fill_with_data(Fq2Data(ark_bn254::Fq2::new(-p.x / p.y,p.y.inverse().unwrap())));
 
-    let (segments1, f1) = hinted_chunk_evaluate_line(assigner, prefix, pf.clone(), f, x, y, constant);
-    let (segments2, f2) = chunk_evaluate_line(assigner, prefix, pf, pxy, f, x, y, constant);
+    let (segments1, f1, fx1) = hinted_chunk_evaluate_line(assigner, prefix, pf.clone(), f, p, constant);
+    let (segments2, f2,fx2) = chunk_evaluate_line(assigner, prefix, pf, pxy, f, p, constant);
     let mut segments = vec![];
     segments.extend(segments1);
     segments.extend(segments2);
-    (segments, f1)
+    (segments, f1,fx1)
 }
 
 pub fn chunk_evaluate_line<T: BCAssigner>(
@@ -36,20 +37,20 @@ pub fn chunk_evaluate_line<T: BCAssigner>(
     pf: Fq12Type,
     pxy: Fq2Type,
     f: ark_bn254::Fq12,
-    x: ark_bn254::Fq,
-    y: ark_bn254::Fq,
+    p: ark_bn254::G1Affine,
     constant: &EllCoeff,
-) -> (Vec<Segment>, Fq12Type) {
+) -> (Vec<Segment>, Fq12Type, ark_bn254::Fq12) {
     assert_eq!(constant.0, ark_bn254::Fq2::ONE);
-
+    let x = -p.x / p.y;
+    let y =  p.y.inverse().unwrap();
     let (hinted_script1, hint1) = Fq::hinted_mul_by_constant_stable(x, &constant.1.c0);
     let (hinted_script2, hint2) = Fq::hinted_mul_by_constant_stable(x, &constant.1.c1);
     let (hinted_script3, hint3) = Fq::hinted_mul_by_constant_stable(y, &constant.2.c0);
     let (hinted_script4, hint4) = Fq::hinted_mul_by_constant_stable(y, &constant.2.c1);
-    let mut c1 = constant.1;
-    c1.mul_assign_by_fp(&x);
-    let mut c2 = constant.2;
-    c2.mul_assign_by_fp(&y);
+    let mut c1new = constant.1;
+    c1new.mul_assign_by_fp(&x);
+    let mut c2new = constant.2;
+    c2new.mul_assign_by_fp(&y);
 
     let script_lines_0 = vec![
         // [x', y']
@@ -84,7 +85,7 @@ pub fn chunk_evaluate_line<T: BCAssigner>(
     //
 
     let mut tr0 = Fq6Type::new(assigner, &format!("{}{}", prefix, "c0"));
-    tr0.fill_with_data(Fq6Data(ark_bn254::Fq6::new(c1, c2, ark_bn254::Fq2::ZERO)));
+    tr0.fill_with_data(Fq6Data(ark_bn254::Fq6::new(c1new, c2new, ark_bn254::Fq2::ZERO)));
 
     let segment0 = Segment::new_with_name(format!("{}seg1", prefix), 
         script! {
@@ -96,13 +97,12 @@ pub fn chunk_evaluate_line<T: BCAssigner>(
         .add_result(&tr0)
         .add_hint(hints_0);
 
-    let mut f1 = f;
-    f1.mul_by_034(&constant.0, &c1, &c2);
-    let c = f1;
+    let mut fx = f;
+    fx.mul_by_034(&constant.0, &c1new, &c2new);
     let mut tc = Fq12Type::new(assigner, &format!("{}{}", prefix, "c"));
-    tc.fill_with_data(Fq12Data(c));
+    tc.fill_with_data(Fq12Data(fx));
 
-    let (script_1, hint_1) = Fq12::hinted_mul_by_34(f, c1, c2);
+    let (script_1, hint_1) = Fq12::hinted_mul_by_34(f, c1new, c2new);
     //  // compute the new f with c1'(c3) and c2'(c4), where c1 is trival value 1
     //  script_1,
     // // [f, c1', c2']
@@ -118,7 +118,7 @@ pub fn chunk_evaluate_line<T: BCAssigner>(
         .add_result(&tc)
         .add_hint(hint_1);
 
-    (vec![segment0, segment1], tc)
+    (vec![segment0, segment1], tc, fx)
 }
 
 
@@ -127,11 +127,12 @@ pub fn hinted_chunk_evaluate_line<T: BCAssigner>(
     prefix: &str,
     pf: Fq12Type,
     f: ark_bn254::Fq12,
-    x: ark_bn254::Fq,
-    y: ark_bn254::Fq,
+    p: ark_bn254::G1Affine,
     constant: &EllCoeff,
-) -> (Vec<Segment>, Fq12Type) {
+) -> (Vec<Segment>, Fq12Type, ark_bn254::Fq12) {
     assert_eq!(constant.0, ark_bn254::Fq2::ONE);
+    let x = -p.x / p.y;
+    let y =  p.y.inverse().unwrap();
     let mut hints = Vec::new();
 
     let script0 = script! {
@@ -139,19 +140,29 @@ pub fn hinted_chunk_evaluate_line<T: BCAssigner>(
             OP_DEPTH OP_1SUB OP_ROLL // hints
         }
     };
+    let (hinted_script_inv, hint_inv) = Fq::hinted_inv(p.y);
+    let (hinted_script_mul, hint_mul) = Fq::hinted_mul(1, p.y.inverse().unwrap(), 0, p.x.neg());
+
     let (hinted_script1, hint1) = Fq::hinted_mul_by_constant_stable(x, &constant.1.c0);
     let (hinted_script2, hint2) = Fq::hinted_mul_by_constant_stable(x, &constant.1.c1);
     let (hinted_script3, hint3) = Fq::hinted_mul_by_constant_stable(y, &constant.2.c0);
     let (hinted_script4, hint4) = Fq::hinted_mul_by_constant_stable(y, &constant.2.c1);
-    let mut c1 = constant.1;
-    c1.mul_assign_by_fp(&x);
-    let mut c2 = constant.2;
-    c2.mul_assign_by_fp(&y);
-    let (hinted_script5, hint5) = Fq12::hinted_mul_by_34(f, c1, c2);
+    let mut c1new = constant.1;
+    c1new.mul_assign_by_fp(&x);
+    let mut c2new = constant.2;
+    c2new.mul_assign_by_fp(&y);
+    let (hinted_script5, hint5) = Fq12::hinted_mul_by_34(f, c1new, c2new);
 
     let script_lines = vec![
         script0.clone(),
         script0.clone(),
+        //[f, x, y]
+        hinted_script_inv, // Fq::inv(),
+        Fq::copy(0),
+        Fq::roll(2),
+        Fq::neg(0),
+        hinted_script_mul, // Fq::mul()
+        Fq::roll(1),
         // [f, x', y']
         // update c1, c1' = x' * c1
         Fq::copy(1),
@@ -181,26 +192,27 @@ pub fn hinted_chunk_evaluate_line<T: BCAssigner>(
     for script_line in script_lines {
         script = script.push_script(script_line.compile());
     }
-    hints.push(Hint::Fq(x));
-    hints.push(Hint::Fq(y));
+    hints.push(Hint::Fq(p.x));
+    hints.push(Hint::Fq(p.y));
+    hints.extend(hint_inv);
+    hints.extend(hint_mul);
     hints.extend(hint1);
     hints.extend(hint2);
     hints.extend(hint3);
     hints.extend(hint4);
     hints.extend(hint5);
 
-    let mut f1 = f;
-    f1.mul_by_034(&constant.0, &c1, &c2);
-    let c = f1;
+    let mut fx = f;
+    fx.mul_by_034(&constant.0, &c1new, &c2new);
     let mut tc = Fq12Type::new(assigner, &format!("{}{}", prefix, "c"));
-    tc.fill_with_data(Fq12Data(c));
+    tc.fill_with_data(Fq12Data(fx));
 
     let segment1 = Segment::new_with_name(format!("{}seg2", prefix),script)
         .add_parameter(&pf)
         .add_result(&tc)
         .add_hint(hints);
 
-    (vec![segment1], tc)
+    (vec![segment1], tc, fx)
 }
 
 #[cfg(test)]
@@ -280,12 +292,11 @@ mod test {
         let mut assigner = DummyAssinger {};
         let mut segments = Vec::new();
         let fn_name = format!("F_{}_mul_c_1p{}", 0, 0);
-        let (segments_mul, mul): (Vec<segment::Segment>, elements::Fq12Type) = chunk_evaluate_line_wrapper(
+        let (segments_mul, mul, fx) = chunk_evaluate_line_wrapper(
             &mut assigner,
             &fn_name,
             f,
-            -p.x / p.y,
-            p.y.inverse().unwrap(),
+            p,
             &coeffs.ell_coeffs[0],
         );
         segments.extend(segments_mul);
