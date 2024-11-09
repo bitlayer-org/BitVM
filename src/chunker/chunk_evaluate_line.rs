@@ -132,10 +132,62 @@ pub fn hinted_chunk_evaluate_line<T: BCAssigner>(
     constant: &EllCoeff,
 ) -> (Vec<Segment>, Fq12Type) {
     assert_eq!(constant.0, ark_bn254::Fq2::ONE);
+    let mut hints = Vec::new();
+
+    let script0 = script! {
+        for _ in 0..<Fq as crate::bn254::fp254impl::Fp254Impl>::N_LIMBS {
+            OP_DEPTH OP_1SUB OP_ROLL // hints
+        }
+    };
+    let (hinted_script1, hint1) = Fq::hinted_mul_by_constant_stable(x, &constant.1.c0);
+    let (hinted_script2, hint2) = Fq::hinted_mul_by_constant_stable(x, &constant.1.c1);
+    let (hinted_script3, hint3) = Fq::hinted_mul_by_constant_stable(y, &constant.2.c0);
+    let (hinted_script4, hint4) = Fq::hinted_mul_by_constant_stable(y, &constant.2.c1);
     let mut c1 = constant.1;
     c1.mul_assign_by_fp(&x);
     let mut c2 = constant.2;
     c2.mul_assign_by_fp(&y);
+    let (hinted_script5, hint5) = Fq12::hinted_mul_by_34(f, c1, c2);
+
+    let script_lines = vec![
+        script0.clone(),
+        script0.clone(),
+        // [f, x', y']
+        // update c1, c1' = x' * c1
+        Fq::copy(1),
+        hinted_script1,
+        // [f, x', y', x' * c1.0]
+        Fq::roll(2),
+        hinted_script2,
+        // [f, y', x' * c1.0, x' * c1.1]
+        // [f, y', x' * c1]
+
+        // update c2, c2' = -y' * c2
+        Fq::copy(2),
+        hinted_script3, // Fq::mul_by_constant(&constant.2.c0),
+        // [f, y', x' * c1, y' * c2.0]
+        Fq::roll(3),
+        hinted_script4,
+        // [f, x' * c1, y' * c2.0, y' * c2.1]
+        // [f, x' * c1, y' * c2]
+        // [f, c1', c2']
+
+        // compute the new f with c1'(c3) and c2'(c4), where c1 is trival value 1
+        hinted_script5,
+        // [f]
+    ];
+
+    let mut script = script! {};
+    for script_line in script_lines {
+        script = script.push_script(script_line.compile());
+    }
+    hints.push(Hint::Fq(x));
+    hints.push(Hint::Fq(y));
+    hints.extend(hint1);
+    hints.extend(hint2);
+    hints.extend(hint3);
+    hints.extend(hint4);
+    hints.extend(hint5);
 
     let mut f1 = f;
     f1.mul_by_034(&constant.0, &c1, &c2);
@@ -143,39 +195,13 @@ pub fn hinted_chunk_evaluate_line<T: BCAssigner>(
     let mut tc = Fq12Type::new(assigner, &format!("{}{}", prefix, "c"));
     tc.fill_with_data(Fq12Data(c));
 
-    let (script_1, hint_1) = Fq12::hinted_mul_by_34(f, c1, c2);
-    
-    let mut hints = vec![];
-    hints.push(Hint::Fq(c1.c0));
-    hints.push(Hint::Fq(c1.c1));
-    hints.push(Hint::Fq(c2.c0));
-    hints.push(Hint::Fq(c2.c1));
-    hints.extend(hint_1);
-
-    let script0 = script! {
-        for _ in 0..<Fq as crate::bn254::fp254impl::Fp254Impl>::N_LIMBS {
-            OP_DEPTH OP_1SUB OP_ROLL // hints
-        }
-    };
-
-    let segment1 = Segment::new_with_name(format!("{}seg2", prefix), 
-        script! {
-            // [f]
-            {script0.clone()}
-            {script0.clone()}
-            // [f, c1, c2]
-            {script0.clone()}
-            {script0.clone()}
-            {script_1}
-        }
-        )
+    let segment1 = Segment::new_with_name(format!("{}seg2", prefix),script)
         .add_parameter(&pf)
         .add_result(&tc)
         .add_hint(hints);
 
     (vec![segment1], tc)
 }
-
 
 #[cfg(test)]
 mod test {

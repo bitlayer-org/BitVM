@@ -609,7 +609,6 @@ pub trait Fp254Impl {
         (script, hints)
     }
 
-    // TODO: Optimize by using the constant feature
     fn hinted_mul_by_constant_stable(a: ark_bn254::Fq, constant: &ark_bn254::Fq) -> (Script, Vec<Hint>) {
         let mut hints = Vec::new();
         let x = BigInt::from_str(&a.to_string()).unwrap();
