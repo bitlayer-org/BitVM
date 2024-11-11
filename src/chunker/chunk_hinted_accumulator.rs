@@ -286,7 +286,7 @@ mod test {
     }
 
     #[test]
-    fn test_groth16_verify_to_segments() {
+    fn test_chunk_accumulator() {
         let mut assigner = DummyAssinger {};
 
         type E = Bn254;
@@ -323,7 +323,68 @@ mod test {
         println!("tc: {:?} \n fs: {:?}", tc, fs);
 
         println!("segments len {}", segments.len());
-        for segment in segments {
+        for (_, segment) in tqdm::tqdm(segments.iter().enumerate()) {
+            let witness = segment.witness(&assigner);
+            let script = segment.script(&assigner);
+
+            let res = execute_script_with_inputs(script.clone(), witness.clone());
+            println!("segment exec_result: {}", res);
+
+            let zero: Vec<u8> = vec![];
+            assert_eq!(res.final_stack.len(), 1, "{}", segment.name); // only one element left
+            assert_eq!(res.final_stack.get(0), zero, "{}", segment.name);
+            assert!(
+                res.stats.max_nb_stack_items < 1000,
+                "{}",
+                res.stats.max_nb_stack_items
+            );
+
+            let mut lenw = 0;
+            for w in witness {
+                lenw += w.len();
+            }
+            assert!(script.len() + lenw < 4000000, "script and witness len");
+        }
+    }
+    #[test]
+    fn test_chunk_accumulator_stable() {
+        let mut assigner = DummyAssinger {};
+
+        type E = Bn254;
+        let k = 6;
+        let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
+        let circuit = DummyCircuit::<<E as Pairing>::ScalarField> {
+            a: Some(<E as Pairing>::ScalarField::rand(&mut rng)),
+            b: Some(<E as Pairing>::ScalarField::rand(&mut rng)),
+            num_variables: 10,
+            num_constraints: 1 << k,
+        };
+        let (pk, vk) = Groth16::<E>::setup(circuit, &mut rng).unwrap();
+
+        let c = circuit.a.unwrap() * circuit.b.unwrap();
+
+        let proof = Groth16::<E>::prove(&pk, circuit, &mut rng).unwrap();
+
+        let mut prng: ChaCha20Rng = ChaCha20Rng::seed_from_u64(0);
+        let rc = ark_bn254::Fq12::rand(&mut prng);
+        let mut tc = Fq12Type::new(&mut assigner, &format!("{}{}", "test".to_owned(), "c"));
+        tc.fill_with_data(Fq12Data(rc));
+        let  tf = generate_f(&vec![c], &proof, &vk);
+        let mut tc = Fq12Type::new(&mut assigner, &format!("{}{}", "test".to_owned(), "c1"));
+        tc.fill_with_data(Fq12Data(tf));
+
+        // let (hinted_groth16_verifier, hints) = Verifier::hinted_verify(&vec![c], &proof, &vk);
+        let (g1a, g1p) = generate_p1(&mut assigner, &vec![c], &vk);
+        let (segments, tp_lst) = g1_points(&mut assigner, g1p, g1a, &proof, &vk);
+
+        let (constants, c, c_inv, wi, p_lst, q4) = generate_f_arg(&vec![c], &proof, &vk);
+        let (segments, fs, f) =
+            chunk_accumulator_stable(&mut assigner, tp_lst, constants, c, c_inv, wi, p_lst);
+        println!("tf: {} \n f: {}", tf, f);
+        println!("tc: {:?} \n fs: {:?}", tc, fs);
+
+        println!("segments len {}", segments.len());
+        for (_, segment) in tqdm::tqdm(segments.iter().enumerate()) {
             let witness = segment.witness(&assigner);
             let script = segment.script(&assigner);
 
@@ -376,7 +437,7 @@ mod test {
 
         let segments = verify_accumulator(tc1, f);
         println!("segments len {}", segments.len());
-        for segment in segments {
+        for (_, segment) in tqdm::tqdm(segments.iter().enumerate()) {
             let witness = segment.witness(&assigner);
             let script = segment.script(&assigner);
 

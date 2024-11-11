@@ -11,3 +11,4 @@ pub mod chunk_scalar_mul;
 pub mod common;
 pub mod elements;
 pub mod segment;
+pub mod utils;

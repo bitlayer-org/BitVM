@@ -6,6 +6,7 @@ use super::elements::DataType::Fq12Data;
 use super::elements::*;
 use super::elements::{Fq12Type, FqType};
 use super::segment::*;
+use super::utils::*;
 
 use crate::bn254::ell_coeffs::EllCoeff;
 use crate::bn254::ell_coeffs::G2Prepared;
@@ -15,6 +16,7 @@ use crate::treepp::*;
 
 use ark_ec::bn::BnConfig;
 use ark_ff::Field;
+
 
 pub fn chunk_accumulator<T: BCAssigner>(
     assigner: &mut T,
@@ -276,6 +278,277 @@ pub fn chunk_accumulator<T: BCAssigner>(
     (segments, param_f, f)
 }
 
+pub fn chunk_accumulator_stable<T: BCAssigner>(
+    assigner: &mut T,
+    im_var_p: Vec<FqType>,
+    constants: Vec<G2Prepared>,
+    c: ark_bn254::Fq12,
+    c_inv: ark_bn254::Fq12,
+    wi: ark_bn254::Fq12,
+    p_lst: Vec<ark_bn254::G1Affine>,
+) -> (Vec<Segment>, Fq12Type, ark_bn254::Fq12) {
+    let mut segments = vec![];
+
+    assert_eq!(constants.len(), 4);
+    let num_line_groups = constants.len();
+
+    // let line_coeffs = collect_line_coeffs(constants);
+    let (line_coeffs,line_coeffs_tc) = collect_line_coeffs_stable(assigner, constants.clone());
+    let line_coeffs = collect_line_coeffs(constants);
+
+    let num_lines = line_coeffs.len();
+
+    let mut f = c_inv;
+
+    let mut param_c_inv = Fq12Type::new(assigner, &format!("{}", "c_inv_init"));
+    param_c_inv.fill_with_data(Fq12Data(c_inv));
+    let mut param_c = Fq12Type::new(assigner, &format!("{}", "c_init"));
+    param_c.fill_with_data(Fq12Data(c));
+    let mut param_wi = Fq12Type::new(assigner, &format!("{}", "wi_init"));
+    param_wi.fill_with_data(Fq12Data(wi));
+    let mut param_f = Fq12Type::new(assigner, &format!("{}", "f_init"));
+    param_f.fill_with_data(Fq12Data(f));
+
+    // ATE_LOOP_COUNT = 65
+    for i in (1..ark_bn254::Config::ATE_LOOP_COUNT.len()).rev() {
+        let fx = f.square();
+        let (hinted_script, hint) = Fq12::hinted_square(f);
+        let (s, r) = make_chunk_square(
+            assigner,
+            format!("F_{}_square", i),
+            param_f,
+            fx,
+            hinted_script.clone(),
+            hint.clone(),
+        );
+        segments.extend(s);
+        param_f = r;
+        f = fx;
+
+        if ark_bn254::Config::ATE_LOOP_COUNT[i - 1] == 1 {
+            let fx = f * c_inv;
+            let (s, r) = make_chunk_mul(
+                assigner,
+                format!("F_{}_mul_c_inv", i),
+                param_f,
+                param_c_inv.clone(),
+                f,
+                c_inv,
+            );
+            segments.extend(s);
+            param_f = r;
+            f = fx;
+        } else if ark_bn254::Config::ATE_LOOP_COUNT[i - 1] == -1 {
+            let fx = f * c;
+            let (s, r) = make_chunk_mul(
+                assigner,
+                format!("F_{}_mul_c", i),
+                param_f,
+                param_c.clone(),
+                f,
+                c,
+            );
+            segments.extend(s);
+            param_f = r;
+            f = fx;
+        }
+
+        // num_line_groups = 4
+        for j in 0..num_line_groups {
+            let p = p_lst[j];
+            let coeffs = &line_coeffs[num_lines - (i + 2)][j][0];
+            let coeffs_tc = &line_coeffs_tc[num_lines - (i + 2)][j][0];
+            assert_eq!(coeffs.0, ark_bn254::Fq2::ONE);
+            let mut fx = f;
+            let mut c1new = coeffs.1;
+            c1new.mul_assign_by_fp(&(-p.x / p.y));
+            let mut c2new = coeffs.2;
+            c2new.mul_assign_by_fp(&(p.y.inverse().unwrap()));
+            fx.mul_by_034(&coeffs.0, &c1new, &c2new);
+
+            let (s, r) = make_chunk_ell_stable(
+                assigner,
+                format!("F_{}_mul_c_1p{}", i, j),
+                param_f,
+                im_var_p[2 * j].clone(),
+                im_var_p[2 * j + 1].clone(),
+                coeffs_tc,
+                f,
+                -p.x / p.y,
+                p.y.inverse().unwrap(),
+                coeffs,
+            );
+            segments.extend(s);
+            param_f = r;
+            f = fx;
+        }
+
+        if ark_bn254::Config::ATE_LOOP_COUNT[i - 1] == 1
+            || ark_bn254::Config::ATE_LOOP_COUNT[i - 1] == -1
+        {
+            for j in 0..num_line_groups {
+                let p = p_lst[j];
+                let coeffs = &line_coeffs[num_lines - (i + 2)][j][1];
+                let coeffs_tc = &line_coeffs_tc[num_lines - (i + 2)][j][1];
+                assert_eq!(coeffs.0, ark_bn254::Fq2::ONE);
+                let mut fx = f;
+                let mut c1new = coeffs.1;
+                c1new.mul_assign_by_fp(&(-p.x / p.y));
+                let mut c2new = coeffs.2;
+                c2new.mul_assign_by_fp(&(p.y.inverse().unwrap()));
+                fx.mul_by_034(&coeffs.0, &c1new, &c2new);
+
+                let (s, r) = make_chunk_ell_stable(
+                    assigner,
+                    format!("F_{}_mul_c_2p{}", i, j),
+                    param_f,
+                    im_var_p[2 * j].clone(),
+                    im_var_p[2 * j + 1].clone(),
+                    coeffs_tc,
+                    f,
+                    -p.x / p.y,
+                    p.y.inverse().unwrap(),
+                    coeffs,
+                );
+                segments.extend(s);
+                param_f = r;
+                f = fx;
+            }
+        }
+    }
+
+    let c_inv_p = c_inv.frobenius_map(1);
+    let (hinted_script, hint) = Fq12::hinted_frobenius_map(1, c_inv);
+    let (s, r) = make_chunk_frobenius_map(
+        assigner,
+        format!("{}", "F_with_c_inv_f_m"),
+        param_c_inv.clone(),
+        c_inv_p,
+        hinted_script.clone(),
+        hint.clone(),
+    );
+    segments.extend(s);
+    let param_c_inv_p = r;
+
+    let fx = f * c_inv_p;
+    let (s, r) = make_chunk_mul(
+        assigner,
+        format!("{}", "F_with_c_inv_mul"),
+        param_f,
+        param_c_inv_p.clone(),
+        f,
+        c_inv_p,
+    );
+
+    segments.extend(s);
+    param_f = r;
+    f = fx;
+
+    let c_p2 = c.frobenius_map(2);
+    let (hinted_script, hint) = Fq12::hinted_frobenius_map(2, c);
+    let (s, r) = make_chunk_frobenius_map(
+        assigner,
+        format!("{}", "F_with_c_f_m"),
+        param_c.clone(),
+        c_p2,
+        hinted_script.clone(),
+        hint.clone(),
+    );
+
+    segments.extend(s);
+    let param_c_p2 = r;
+
+    let fx = f * c_p2;
+    let (s, r) = make_chunk_mul(
+        assigner,
+        format!("{}", "F_with_c_mul"),
+        param_f,
+        param_c_p2.clone(),
+        f,
+        c_p2,
+    );
+
+    segments.extend(s);
+    param_f = r;
+    f = fx;
+
+    let fx = f * wi;
+    let (s, r) = make_chunk_mul(
+        assigner,
+        format!("{}", "F_with_wi_mul"),
+        param_f,
+        param_wi.clone(),
+        f,
+        wi,
+    );
+
+    segments.extend(s);
+    param_f = r;
+    f = fx;
+
+    // num_line_groups = 4
+    for j in 0..num_line_groups {
+        let p = p_lst[j];
+        let coeffs = &line_coeffs[num_lines - 2][j][0];
+        let coeffs_tc = &line_coeffs_tc[num_lines - 2][j][0];
+        assert_eq!(coeffs.0, ark_bn254::Fq2::ONE);
+        let mut fx = f;
+        let mut c1new = coeffs.1;
+        c1new.mul_assign_by_fp(&(-p.x / p.y));
+        let mut c2new = coeffs.2;
+        c2new.mul_assign_by_fp(&(p.y.inverse().unwrap()));
+        fx.mul_by_034(&coeffs.0, &c1new, &c2new);
+
+        let (s, r) = make_chunk_ell_stable(
+            assigner,
+            format!("F_final_1p{}", j),
+            param_f,
+            im_var_p[2 * j].clone(),
+            im_var_p[2 * j + 1].clone(),
+            coeffs_tc,
+            f,
+            -p.x / p.y,
+            p.y.inverse().unwrap(),
+            coeffs,
+        );
+
+        segments.extend(s);
+        param_f = r;
+        f = fx;
+    }
+
+    for j in 0..num_line_groups {
+        let p = p_lst[j];
+        let coeffs = &line_coeffs[num_lines - 1][j][0];
+        let coeffs_tc = &line_coeffs_tc[num_lines - 1][j][0];
+        assert_eq!(coeffs.0, ark_bn254::Fq2::ONE);
+        let mut fx = f;
+        let mut c1new = coeffs.1;
+        c1new.mul_assign_by_fp(&(-p.x / p.y));
+        let mut c2new = coeffs.2;
+        c2new.mul_assign_by_fp(&(p.y.inverse().unwrap()));
+        fx.mul_by_034(&coeffs.0, &c1new, &c2new);
+
+        let (s, r) = make_chunk_ell_stable(
+            assigner,
+            format!("F_final_2p{}", j),
+            param_f,
+            im_var_p[2 * j].clone(),
+            im_var_p[2 * j + 1].clone(),
+            coeffs_tc,
+            f,
+            -p.x / p.y,
+            p.y.inverse().unwrap(),
+            coeffs,
+        );
+
+        segments.extend(s);
+        param_f = r;
+        f = fx;
+    }
+    (segments, param_f, f)
+}
+
 pub fn make_chunk_square<T: BCAssigner>(
     assigner: &mut T,
     fn_name: String,
@@ -327,6 +600,26 @@ pub fn make_chunk_ell<T: BCAssigner>(
     let mut segments = vec![];
 
     let (segments_mul, c) = chunk_evaluate_line(assigner, &fn_name, pf, px, py, f, x, y, constant);
+    segments.extend(segments_mul);
+
+    (segments, c)
+}
+
+pub fn make_chunk_ell_stable<T: BCAssigner>(
+    assigner: &mut T,
+    fn_name: String,
+    pf: Fq12Type,
+    px: FqType,
+    py: FqType,
+    tc:&(Fq2Type, Fq2Type,Fq2Type),
+    f: ark_bn254::Fq12,
+    x: ark_bn254::Fq,
+    y: ark_bn254::Fq,
+    constant: &EllCoeff,
+) -> (Vec<Segment>, Fq12Type) {
+    let mut segments = vec![];
+
+    let (segments_mul, c) = chunk_evaluate_line_stable(assigner, &fn_name, pf, px, py, tc, f, x, y, constant);
     segments.extend(segments_mul);
 
     (segments, c)

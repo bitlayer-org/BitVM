@@ -154,6 +154,27 @@ impl Segment {
 
         witness
     }
+
+    /// Create witness.
+    pub fn witness2(&self) -> Witness {
+        // [hinted, input0, input1, input1_bc_witness, input0_bc_witness, output1_bc_witness, outpu0_bc_witness]
+        let mut witness = vec![];
+
+        witness.append(&mut self.hinted_to_witness());
+
+        for parameter in self.parameter_list.iter() {
+            match parameter.as_ref().to_witness() {
+                Some(mut w) => {
+                    witness.append(&mut w);
+                }
+                None => {
+                    panic!("extract witness {} fail in {}", parameter.id(), self.name)
+                }
+            }
+        }
+
+        witness
+    }
 }
 
 #[cfg(test)]
