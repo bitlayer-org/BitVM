@@ -232,6 +232,7 @@ mod tests {
 
         let mut small_segment_size = 0;
 
+        let mut max_segment_len = 0;
         for (_, segment) in tqdm::tqdm(segments.iter().enumerate()) {
             let witness = segment.witness(&assigner);
             let script = segment.script(&assigner);
@@ -250,6 +251,9 @@ mod tests {
                 "script and witness len is over 3.98M {}",
                 segment.name
             );
+            if max_segment_len < script.len() + lenw {
+                max_segment_len = script.len() + lenw;
+            }
 
             let res = execute_script_with_inputs(script, witness);
             let zero: Vec<u8> = vec![];
@@ -263,6 +267,7 @@ mod tests {
             );
         }
 
+        println!("max segment len {}", max_segment_len);
         println!("segments number: {}", segments.len());
         println!("small_segment_size: {}", small_segment_size);
         println!("assign commitment size {}", assigner.commitment_count());
