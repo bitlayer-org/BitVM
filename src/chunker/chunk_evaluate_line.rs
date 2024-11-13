@@ -5,8 +5,10 @@ use super::elements::{
 use super::{assigner::BCAssigner, segment::Segment};
 use crate::bn254::{ell_coeffs::EllCoeff, fp254impl::Fp254Impl, fq::Fq, fq2::Fq2,fq12::Fq12};
 use crate::bn254::curves::{G1Affine, G2Affine};
+use crate::bn254::utils::{fq_push_not_montgomery};
 use crate::treepp::*;
 use ark_ff::{AdditiveGroup, Field};
+
 
 pub fn chunk_evaluate_line_wrapper<T: BCAssigner>(
     assigner: &mut T,
@@ -21,8 +23,179 @@ pub fn chunk_evaluate_line_wrapper<T: BCAssigner>(
     let mut pxy = Fq2Type::new(assigner, &format!("{}{}", prefix, "xy"));
     pxy.fill_with_data(Fq2Data(ark_bn254::Fq2::new(x,y)));
 
-    chunk_evaluate_line(assigner, prefix, pf, pxy, f, x, y, constant)
+    chunk_evaluate_line_3(assigner, prefix, pf, pxy, f, x, y, constant)
 }
+
+
+pub fn chunk_evaluate_line_12<T: BCAssigner>(
+    assigner: &mut T,
+    prefix: &str,
+    pf: Fq12Type,
+    pxy: Fq2Type,
+    f: ark_bn254::Fq12,
+    x: ark_bn254::Fq,
+    y: ark_bn254::Fq,
+    constant: &EllCoeff,
+) -> (Vec<Segment>, Fq12Type) {
+    assert_eq!(constant.0, ark_bn254::Fq2::ONE);
+
+    let (hinted_script1, hint1) = Fq::hinted_mul_by_constant(x, &constant.1.c0);
+    let (hinted_script2, hint2) = Fq::hinted_mul_by_constant(x, &constant.1.c1);
+    let (hinted_script3, hint3) = Fq::hinted_mul_by_constant(y, &constant.2.c0);
+    let (hinted_script4, hint4) = Fq::hinted_mul_by_constant(y, &constant.2.c1);
+    let mut c1 = constant.1;
+    c1.mul_assign_by_fp(&x);
+    let mut c2 = constant.2;
+    c2.mul_assign_by_fp(&y);
+
+    let script_lines_0 = vec![
+        // [x', y']
+        // update c1, c1' = x' * c1
+        Fq::copy(1),
+        hinted_script1,
+        // [ x', y', x' * c1.0]
+        Fq::roll(2),
+        hinted_script2,
+        // [y', x' * c1.0, x' * c1.1]
+        // [y', x' * c1]
+
+        // update c2, c2' = -y' * c2
+        Fq::copy(2),
+        hinted_script3, // Fq::mul_by_constant(&constant.2.c0),
+        // [y', x' * c1, y' * c2.0]
+        Fq::roll(3),
+        hinted_script4,
+        // [x' * c1, y' * c2.0, y' * c2.1]
+        // [x' * c1, y' * c2]
+        // [c1', c2']
+    ];
+    let mut script_0 = script! {};
+    for script_line_0 in script_lines_0 {
+        script_0 = script_0.push_script(script_line_0.compile());
+    }
+    let mut hints_0 = Vec::new();
+    hints_0.extend(hint1);
+    hints_0.extend(hint2);
+    hints_0.extend(hint3);
+    hints_0.extend(hint4);
+    //
+
+    let mut tr0 = Fq6Type::new(assigner, &format!("{}{}", prefix, "c0"));
+    tr0.fill_with_data(Fq6Data(ark_bn254::Fq6::new(c1, c2, ark_bn254::Fq2::ZERO)));
+
+    let segment0 = Segment::new_with_name(format!("{}seg1", prefix), 
+        script! {
+            {script_0}
+            {Fq2::push_zero()}
+        }
+        )
+        .add_parameter(&pxy)
+        .add_result(&tr0)
+        .add_hint(hints_0);
+
+    let mut f1 = f;
+    f1.mul_by_034(&constant.0, &c1, &c2);
+    let c = f1;
+    let mut tc = Fq12Type::new(assigner, &format!("{}{}", prefix, "c"));
+    tc.fill_with_data(Fq12Data(c));
+
+    let (script_1, hint_1) = Fq12::hinted_mul_by_34(f, c1, c2);
+    //  // compute the new f with c1'(c3) and c2'(c4), where c1 is trival value 1
+    //  script_1,
+    // // [f, c1', c2']
+    //  // [f]
+    let segment1 = Segment::new_with_name(format!("{}seg2", prefix), 
+        script! {
+            {Fq2::drop()}
+            {script_1}
+        }
+        )
+        .add_parameter(&pf)
+        .add_parameter(&tr0)
+        .add_result(&tc)
+        .add_hint(hint_1);
+
+    (vec![segment0, segment1], tc)
+}
+
+
+pub fn chunk_evaluate_line_3<T: BCAssigner>(
+    assigner: &mut T,
+    prefix: &str,
+    pf: Fq12Type,
+    pxy: Fq2Type,
+    f: ark_bn254::Fq12,
+    x: ark_bn254::Fq,
+    y: ark_bn254::Fq,
+    constant: &EllCoeff,
+) -> (Vec<Segment>, Fq12Type) {
+    assert_eq!(constant.0, ark_bn254::Fq2::ONE);
+    let mut hints = Vec::new();
+
+    let (hinted_script1, hint1) = Fq::hinted_mul_by_constant(x, &constant.1.c0);
+    let (hinted_script2, hint2) = Fq::hinted_mul_by_constant(x, &constant.1.c1);
+    let (hinted_script3, hint3) = Fq::hinted_mul_by_constant(y, &constant.2.c0);
+    let (hinted_script4, hint4) = Fq::hinted_mul_by_constant(y, &constant.2.c1);
+    let mut c1 = constant.1;
+    c1.mul_assign_by_fp(&x);
+    let mut c2 = constant.2;
+    c2.mul_assign_by_fp(&y);
+    let (hinted_script5, hint5) = Fq12::hinted_mul_by_34(f, c1, c2);
+
+    let script_lines = vec![
+        { fq_push_not_montgomery(x) },
+        { fq_push_not_montgomery(y) },
+        // [f, x', y']
+        // update c1, c1' = x' * c1
+        Fq::copy(1),
+        hinted_script1,
+        // [f, x', y', x' * c1.0]
+        Fq::roll(2),
+        hinted_script2,
+        // [f, y', x' * c1.0, x' * c1.1]
+        // [f, y', x' * c1]
+
+        // update c2, c2' = -y' * c2
+        Fq::copy(2),
+        hinted_script3, // Fq::mul_by_constant(&constant.2.c0),
+        // [f, y', x' * c1, y' * c2.0]
+        Fq::roll(3),
+        hinted_script4,
+        // [f, x' * c1, y' * c2.0, y' * c2.1]
+        // [f, x' * c1, y' * c2]
+        // [f, c1', c2']
+
+        // compute the new f with c1'(c3) and c2'(c4), where c1 is trival value 1
+        hinted_script5,
+        // [f]
+    ];
+
+    let mut script = script! {};
+    for script_line in script_lines {
+        script = script.push_script(script_line.compile());
+    }
+    hints.extend(hint1);
+    hints.extend(hint2);
+    hints.extend(hint3);
+    hints.extend(hint4);
+    hints.extend(hint5);
+
+
+    let mut f1 = f;
+    f1.mul_by_034(&constant.0, &c1, &c2);
+    let c = f1;
+    let mut tc = Fq12Type::new(assigner, &format!("{}{}", prefix, "c"));
+    tc.fill_with_data(Fq12Data(c));
+
+    let segment = Segment::new_with_name(format!("{}seg2", prefix), script)
+        .add_parameter(&pf)
+        // .add_parameter(&pxy)
+        .add_result(&tc)
+        .add_hint(hints);
+
+    (vec![segment], tc)
+}
+
 
 pub fn chunk_evaluate_line<T: BCAssigner>(
     assigner: &mut T,
@@ -123,6 +296,7 @@ mod test {
     use crate::bn254::utils::*;
     use crate::chunker::elements;
     use crate::chunker::{assigner::DummyAssinger, segment};
+    use crate::hash::blake3_u32::blake3_var_length;
     use crate::treepp::*;
 
     use crate::execute_script_with_inputs;
@@ -205,6 +379,15 @@ mod test {
         for segment in segments {
             let witness = segment.witness(&assigner);
             let script = segment.script(&assigner);
+            println!("0 ori script len {} 12 bv {} ", segment.script.clone().len(), 
+            segment.script.clone().len() + blake3_var_length(9*12).len() +  blake3_var_length(9*12).len() 
+            );
+            println!("ori script len {} 12 bv {} ", segment.script.clone().len(), 
+            segment.script.clone().len() + blake3_var_length(9*12).len() +  blake3_var_length(9*12).len() +  blake3_var_length(9*2).len()
+            );
+            println!("2 ori script len {} 12 bv {} ", segment.script.clone().len(), 
+            segment.script.clone().len() + blake3_var_length(9*14).len() +  blake3_var_length(9*14).len() 
+            );
 
             let mut lenw = 0;
             for w in witness.iter() {
@@ -237,6 +420,8 @@ mod test {
             for w in witness {
                 lenw += w.len();
             }
+            println!("script + lenw size {}", script.len() + lenw);
+
             assert!(script.len() + lenw < 4000000, "script and witness len");
         }
     }

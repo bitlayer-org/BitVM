@@ -109,6 +109,7 @@ pub fn chunk_accumulator<T: BCAssigner>(
                 -p.x / p.y,
                 p.y.inverse().unwrap(),
                 coeffs,
+                j
             );
             segments.extend(s);
             param_f = r;
@@ -138,6 +139,7 @@ pub fn chunk_accumulator<T: BCAssigner>(
                     -p.x / p.y,
                     p.y.inverse().unwrap(),
                     coeffs,
+                    j
                 );
                 segments.extend(s);
                 param_f = r;
@@ -236,6 +238,7 @@ pub fn chunk_accumulator<T: BCAssigner>(
             -p.x / p.y,
             p.y.inverse().unwrap(),
             coeffs,
+            j
         );
 
         segments.extend(s);
@@ -263,6 +266,7 @@ pub fn chunk_accumulator<T: BCAssigner>(
             -p.x / p.y,
             p.y.inverse().unwrap(),
             coeffs,
+            j
         );
 
         segments.extend(s);
@@ -318,10 +322,17 @@ pub fn make_chunk_ell<T: BCAssigner>(
     x: ark_bn254::Fq,
     y: ark_bn254::Fq,
     constant: &EllCoeff,
+    j:usize
 ) -> (Vec<Segment>, Fq12Type) {
     let mut segments = vec![];
 
-    let (segments_mul, c) = chunk_evaluate_line(assigner, &fn_name, pf, pxy, f, x, y, constant);
+    let (segments_mul, c) = if j==3 {
+        chunk_evaluate_line(assigner, &fn_name, pf, pxy, f, x, y, constant)
+    } else if j == 2{
+        chunk_evaluate_line_3(assigner, &fn_name, pf, pxy, f, x, y, constant)
+    } else {
+        chunk_evaluate_line_12(assigner, &fn_name, pf, pxy, f, x, y, constant)
+    };
     segments.extend(segments_mul);
 
     (segments, c)

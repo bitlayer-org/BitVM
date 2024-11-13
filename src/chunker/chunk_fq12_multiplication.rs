@@ -184,7 +184,7 @@ mod test {
             for w in witness.clone() {
                 lenw += w.len();
             }
-            println!("segment name {} script size {} witness size {}", segment.name, segment.script.clone().len(),lenw );
+            println!("segment name {} size {} script size {} witness size {}", segment.name,script.clone().len(), segment.script.clone().len(),lenw );
 
             let res = execute_script_with_inputs(script, witness);
             let zero: Vec<u8> = vec![];
