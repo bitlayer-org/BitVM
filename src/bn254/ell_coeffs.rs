@@ -152,6 +152,7 @@ impl G2Prepared {
 
             let q1 = mul_by_char(q);
             let mut q2 = mul_by_char(q1);
+            let mut q3 = mul_by_char(q2);
 
             if ark_bn254::Config::X_IS_NEGATIVE {
                 r.y = -r.y;
@@ -161,6 +162,7 @@ impl G2Prepared {
 
             ell_coeffs.push(Self::affine_add_in_place(&mut r, &q1));
             ell_coeffs.push(Self::affine_add_in_place(&mut r, &q2));
+            ell_coeffs.push(Self::affine_add_in_place(&mut r, &q3));
 
             Self {
                 ell_coeffs,

@@ -201,6 +201,7 @@ pub fn chunk_accumulator<T: BCAssigner>(
     param_f = r;
     f = fx;
 
+    /// frobenius_map
     let fx = f * wi;
     let (s, r) = make_chunk_mul(
         assigner,
@@ -269,6 +270,8 @@ pub fn chunk_accumulator<T: BCAssigner>(
         param_f = r;
         f = fx;
     }
+
+    // evaluate L3
     (segments, param_f, f)
 }
 

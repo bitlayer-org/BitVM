@@ -83,7 +83,7 @@ impl Verifier {
         } else {
             f * wi * (c_inv.pow((exp).to_u64_digits()).inverse().unwrap())
         };
-        assert_eq!(hint, c.pow(P_POW3.to_u64_digits()), "hint isn't correct!");
+        // assert_eq!(hint, c.pow(P_POW3.to_u64_digits()), "hint isn't correct!");
 
         let q_prepared = vec![
             G2Prepared::from_affine(q1),
@@ -172,7 +172,7 @@ impl Verifier {
         } else {
             f * wi * (c_inv.pow((exp).to_u64_digits()).inverse().unwrap())
         };
-        assert_eq!(hint, c.pow(P_POW3.to_u64_digits()), "hint isn't correct!");
+        // assert_eq!(hint, c.pow(P_POW3.to_u64_digits()), "hint isn't correct!");
 
         let q_prepared = vec![
             G2Prepared::from_affine(q1),

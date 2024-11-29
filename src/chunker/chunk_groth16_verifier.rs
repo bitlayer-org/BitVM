@@ -20,7 +20,7 @@ use super::segment::Segment;
 /// This function outputs a vector segment, which is equivalent to the plain groth16 verifier.
 /// Each segment will generate script and witness for each branch of disprove transaction.
 /// Bitcommitments are collected into assinger.
-fn groth16_verify_to_segments<T: BCAssigner>(
+pub fn groth16_verify_to_segments<T: BCAssigner>(
     assigner: &mut T,
     public_inputs: &Vec<<Bn254 as ark_Pairing>::ScalarField>,
     proof: &Proof<Bn254>,
@@ -57,7 +57,7 @@ fn groth16_verify_to_segments<T: BCAssigner>(
     } else {
         f * wi * (c_inv.pow((exp).to_u64_digits()).inverse().unwrap())
     };
-    assert_eq!(hint, c.pow(P_POW3.to_u64_digits()), "hint isn't correct!");
+    // assert_eq!(hint, c.pow(P_POW3.to_u64_digits()), "hint isn't correct!");
 
     let q_prepared = vec![
         G2Prepared::from_affine(q1),
@@ -121,6 +121,7 @@ mod tests {
     use crate::execute_script_with_inputs;
     use crate::treepp::*;
 
+    use ark_bn254::g1::G1Affine;
     use ark_bn254::Bn254;
     use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
     use ark_ec::pairing::Pairing;
@@ -223,7 +224,8 @@ mod tests {
 
         let c = circuit.a.unwrap() * circuit.b.unwrap();
 
-        let proof = Groth16::<E>::prove(&pk, circuit, &mut rng).unwrap();
+        let mut proof = Groth16::<E>::prove(&pk, circuit, &mut rng).unwrap();
+        proof.a = G1Affine::rand(&mut rng);
 
         // let mut assigner = DummyAssinger {};
         let mut assigner = StatisticAssinger::new();

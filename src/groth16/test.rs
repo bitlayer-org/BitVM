@@ -1,5 +1,6 @@
 use crate::groth16::verifier::Verifier;
 use crate::{execute_script, execute_script_without_stack_limit};
+use ark_bn254::g1::G1Affine;
 use ark_bn254::Bn254;
 use ark_crypto_primitives::snark::{CircuitSpecificSetupSNARK, SNARK};
 use ark_ec::pairing::Pairing;
@@ -100,7 +101,8 @@ fn test_hinted_groth16_verifier() {
 
     let c = circuit.a.unwrap() * circuit.b.unwrap();
 
-    let proof = Groth16::<E>::prove(&pk, circuit, &mut rng).unwrap();
+    let mut proof = Groth16::<E>::prove(&pk, circuit, &mut rng).unwrap();
+    proof.a = G1Affine::rand(&mut rng);
 
     let (hinted_groth16_verifier, hints) = Verifier::hinted_verify(&vec![c], &proof, &vk);
 
@@ -142,7 +144,8 @@ fn test_groth16_verifier() {
 
     let c = circuit.a.unwrap() * circuit.b.unwrap();
 
-    let proof = Groth16::<E>::prove(&pk, circuit, &mut rng).unwrap();
+    let mut proof = Groth16::<E>::prove(&pk, circuit, &mut rng).unwrap();
+    proof.a = G1Affine::rand(&mut rng);
 
     let start = start_timer!(|| "collect_script");
     let script = Verifier::verify_proof(&vec![c], &proof, &vk);
