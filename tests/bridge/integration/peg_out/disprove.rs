@@ -147,10 +147,12 @@ async fn test_disprove_success() {
     let assert_commit_1_tx = assert_commit_1.finalize();
     let assert_commit_1_txid = assert_commit_1_tx.compute_txid();
     println!(
-        "txid: {}, assert_commit_1_tx inputs {}, outputs {}",
+        "txid: {}, assert_commit_1_tx inputs {}, outputs {}, byte {}, vb {}",
         assert_commit_1_txid,
         assert_commit_1.tx().input.len(),
-        assert_commit_1.tx().output.len()
+        assert_commit_1.tx().output.len(),
+        assert_commit_1.tx().total_size(),
+        assert_commit_1.tx().vsize(),
     );
     let assert_commit_1_result = config.client_0.esplora.broadcast(&assert_commit_1_tx).await;
     assert!(
@@ -190,10 +192,12 @@ async fn test_disprove_success() {
     let assert_commit_2_tx = assert_commit_2.finalize();
     let assert_commit_2_txid = assert_commit_2_tx.compute_txid();
     println!(
-        "txid: {}, assert_commit_2_tx inputs {}, outputs {}",
+        "txid: {}, assert_commit_2_tx inputs {}, outputs {}, byte {}, vb {}",
         assert_commit_2_txid,
         assert_commit_2.tx().input.len(),
-        assert_commit_2.tx().output.len()
+        assert_commit_2.tx().output.len(),
+        assert_commit_2.tx().total_size(),
+        assert_commit_2.tx().vsize(),
     );
     let assert_commit_2_result = config.client_0.esplora.broadcast(&assert_commit_2_tx).await;
     assert!(
@@ -329,6 +333,15 @@ async fn test_disprove_success() {
 
     let disprove_tx = disprove.finalize();
     let disprove_txid = disprove_tx.compute_txid();
+
+    println!(
+        "txid: {}, disprove_tx inputs {}, outputs {}, byte {}, vb {}",
+        disprove_txid,
+        disprove_tx.input.len(),
+        disprove_tx.output.len(),
+        disprove_tx.total_size(),
+        disprove_tx.vsize(),
+    );
 
     // mine disprove
     let disprove_result = config.client_0.esplora.broadcast(&disprove_tx).await;

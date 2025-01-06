@@ -260,6 +260,7 @@ mod tests {
         let mut small_segment_size = 0;
         let mut min_segment = 4_000_000;
         let mut max_segment = 0;
+        let mut verify_f_sgement_size = 0;
 
         for (_, segment) in tqdm::tqdm(segments.iter().enumerate()) {
             let witness = segment.witness(&assigner);
@@ -279,6 +280,11 @@ mod tests {
                 "script and witness len is over 4M {}",
                 segment.name
             );
+
+            // record final f
+            if segment.name == "verify_f" {
+                verify_f_sgement_size = total_size;
+            }
 
             // how many segments are smaller than 1.6M
             if total_size < 1_600_000 {
@@ -307,6 +313,7 @@ mod tests {
         println!("small_segment_size: {}", small_segment_size);
         println!("minimal segment size: {}", min_segment);
         println!("maximal segment size: {}", max_segment);
+        println!("verify f size: {}", verify_f_sgement_size);
         println!("assign commitment size {}", assigner.commitment_count());
     }
 
