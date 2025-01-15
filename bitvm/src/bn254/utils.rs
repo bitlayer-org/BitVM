@@ -5,6 +5,8 @@ use crate::bn254::fq::Fq;
 use crate::bn254::fr::Fr;
 use crate::treepp::*;
 use ark_ff::BigInt;
+use serde::Deserialize;
+use serde::Serialize;
 
 #[derive(Debug, Clone)]
 pub enum Hint {

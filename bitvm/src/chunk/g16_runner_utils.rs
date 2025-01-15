@@ -21,13 +21,14 @@ use super::{
 use ark_ff::Field;
 use bitcoin::ScriptBuf;
 use bitcoin_script::script;
+use serde::{Deserialize, Serialize};
 
 use super::taps_ext_miller::{chunk_final_verify, chunk_frob_fp12, chunk_hash_c, chunk_hash_c_inv};
 
 pub type SegmentID = u32;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Segment {
+pub struct Segment {
     pub id: SegmentID,
     pub parameter_ids: Vec<(SegmentID, ElementType)>,
     pub result: (DataType, ElementType),
@@ -40,7 +41,7 @@ pub(crate) struct Segment {
 /// After the returned `script` and `witness` are executed together, only `OP_FALSE` left on the stack.
 /// If operator gives a wrong intermediate value, `OP_TRUE` will left on the stack and challenger will finish the slash.
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ScriptType {
     NonDeterministic,
     MSM(u32),
