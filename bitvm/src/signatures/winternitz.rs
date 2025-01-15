@@ -12,7 +12,7 @@ pub type PublicKey = Vec<HashOut>;
 pub type SecretKey = Vec<u8>;
 
 /// Parameters for the [`Winternitz`] struct.
-#[derive(Serialize, Deserialize, Eq, PartialEq, Hash, Clone, Copy)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Hash, Clone, Copy, Debug)]
 pub struct Parameters {
     /// Number of digits per message (including zero padding at the end).
     pub(super) message_digit_len: u32,
@@ -660,6 +660,8 @@ impl Converter for ToBytesConverter {
 
 #[cfg(test)]
 mod test {
+    use crate::signatures::signing_winternitz::{WinternitzPublicKey, WinternitzSecret};
+
     use super::*;
     use bitcoin::hex::FromHex;
     use rand::{Rng, SeedableRng};
@@ -808,6 +810,19 @@ mod test {
 
         };
         run(s);
+    }
+
+    #[test]
+    fn test_parameter() {
+        let param = Parameters::new_by_bit_length(32, 4);
+        println!("{:?}", param);
+        let winternitz_sk = WinternitzSecret::new(4);
+        let winternitz_pk: WinternitzPublicKey = (&winternitz_sk).into();
+        let winternitz_verifier = Winternitz::<ListpickVerifier, ToBytesConverter>::new();
+        let sig = winternitz_verifier
+            .checksig_verify(&param, &winternitz_pk.public_key)
+            .len();
+        println!("{:?}", sig);
     }
 
     #[test]

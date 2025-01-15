@@ -103,7 +103,7 @@ pub(crate) fn append_bitcom_locking_script_to_partial_scripts(
     res
 }
 
-fn generate_segments_using_mock_proof(vk: Vkey, skip_evaluation: bool) -> Vec<Segment> {
+pub fn generate_segments_using_mock_proof(vk: Vkey, skip_evaluation: bool) -> Vec<Segment> {
     // values known only at runtime, can be mocked
     let q4xc0: ark_bn254::Fq = ark_bn254::Fq::from(
         BigUint::from_str(
@@ -178,7 +178,7 @@ fn generate_segments_using_mock_proof(vk: Vkey, skip_evaluation: bool) -> Vec<Se
     segments
 }
 
-pub(crate) fn generate_segments_using_mock_vk_and_mock_proof() -> Vec<Segment> {
+pub fn generate_segments_using_mock_vk_and_mock_proof() -> Vec<Segment> {
     let mock_vk = Vkey {
         q2: ark_bn254::G2Affine::identity(),
         q3: ark_bn254::G2Affine::identity(),
@@ -191,7 +191,7 @@ pub(crate) fn generate_segments_using_mock_vk_and_mock_proof() -> Vec<Segment> {
     generate_segments_using_mock_proof(mock_vk, true)
 }
 
-pub(crate) fn partial_scripts_from_segments(segments: &[Segment]) -> Vec<ScriptBuf> {
+pub fn partial_scripts_from_segments(segments: &[Segment]) -> Vec<ScriptBuf> {
     fn serialize_element_types(elems: &[ElementType]) -> String {
         // 1. Convert each variant to its string representation.
         let joined = elems
@@ -267,7 +267,7 @@ pub(crate) fn partial_scripts_from_segments(segments: &[Segment]) -> Vec<ScriptB
     op_scripts
 }
 
-pub(crate) fn bitcom_scripts_from_segments(
+pub fn bitcom_scripts_from_segments(
     segments: &[Segment],
     wots_pubkeys: PublicKeys,
 ) -> Vec<treepp::Script> {

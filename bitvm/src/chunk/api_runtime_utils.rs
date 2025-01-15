@@ -36,7 +36,7 @@ enum SigData {
 // Segments are collected in the order [PublicInputSegment, ProofInputSegments, IntermediateHashSegments, FinalScriptSegment]
 // mirror of the function get_segments_from_assertion()
 #[allow(clippy::needless_range_loop)]
-pub(crate) fn get_assertion_from_segments(segments: &[Segment]) -> Assertions {
+pub fn get_assertion_from_segments(segments: &[Segment]) -> Assertions {
     // extract output {hash or field elements} from all but final script (final script doesn't have output)
     let mut arr_of_output_state: Vec<CompressedStateObject> = vec![];
     for v in segments {
@@ -87,7 +87,7 @@ pub(crate) fn get_assertion_from_segments(segments: &[Segment]) -> Assertions {
 }
 
 // deserialize assertions to CompressedState (i.e. concrete types of bigint and hasbytes) and get proof
-fn utils_deserialize_assertions(
+pub fn utils_deserialize_assertions(
     asserts: Assertions,
 ) -> (
     [CompressedStateObject; NUM_PUBS],
@@ -125,6 +125,53 @@ fn utils_deserialize_assertions(
     ) = (cobj_pubs, cobj_fqs, cobj_hashes);
 
     cobjs
+}
+
+pub fn extract_proof_from_assertions(
+    state_pubs: [CompressedStateObject; NUM_PUBS],
+    state_fqs: [CompressedStateObject; NUM_U256],
+) -> Option<InputProofRaw> {
+    let mut ks: Vec<ark_ff::BigInt<4>> = vec![];
+    for cobj in state_pubs {
+        if let CompressedStateObject::U256(cobj) = cobj {
+            ks.push(cobj);
+        } else {
+            return None;
+        }
+    }
+    let ks: [ark_ff::BigInt<4>; NUM_PUBS] = ks.try_into().unwrap();
+
+    let mut numfqs: Vec<ark_ff::BigInt<4>> = vec![];
+    for cobj in state_fqs {
+        if let CompressedStateObject::U256(cobj) = cobj {
+            numfqs.push(cobj);
+        } else {
+            return None;
+        }
+    }
+
+    let p4 = [numfqs[1], numfqs[0]];
+    let p2 = [numfqs[3], numfqs[2]];
+    let step = 4;
+    let c = [
+        numfqs[step],
+        numfqs[step + 1],
+        numfqs[step + 2],
+        numfqs[step + 3],
+        numfqs[step + 4],
+        numfqs[step + 5],
+    ];
+    let step = step + 6;
+
+    let q4 = [
+        numfqs[step],
+        numfqs[step + 1],
+        numfqs[step + 2],
+        numfqs[step + 3],
+    ];
+
+    let eval_ins: InputProofRaw = InputProofRaw { p2, p4, q4, c, ks };
+    Some(eval_ins)
 }
 
 // mirror of the funtion get_assertion_from_segments
@@ -238,7 +285,7 @@ pub(crate) fn get_segments_from_assertion(
     (success, segments)
 }
 
-pub(crate) fn get_segments_from_groth16_proof(
+pub fn get_segments_from_groth16_proof(
     proof: ark_groth16::Proof<Bn<ark_bn254::Config>>,
     scalars: Vec<ark_bn254::Fr>,
     vk: &ark_groth16::VerifyingKey<Bn254>,
@@ -295,7 +342,7 @@ pub(crate) fn get_segments_from_groth16_proof(
 
 // wots sign byte array using secrets
 // mirror of get_assertions_from_signature
-pub(crate) fn get_signature_from_assertion(assn: Assertions, secrets: Vec<String>) -> Signatures {
+pub fn get_signature_from_assertion(assn: Assertions, secrets: Vec<String>) -> Signatures {
     println!("get_signature_from_assertion");
     // sign and return Signatures
     let (ps, fs, hs) = (assn.0, assn.1, assn.2);
@@ -329,7 +376,7 @@ pub(crate) fn get_signature_from_assertion(assn: Assertions, secrets: Vec<String
 
 // decode signature to assertion
 // mirror of get_signature_from_assertion
-pub(crate) fn get_assertions_from_signature(signed_asserts: Signatures) -> Assertions {
+pub fn get_assertions_from_signature(signed_asserts: Signatures) -> Assertions {
     println!("get_assertions_from_signature");
     let mut ks: Vec<[u8; 32]> = vec![];
     for i in 0..NUM_PUBS {

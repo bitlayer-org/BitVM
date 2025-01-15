@@ -1,5 +1,6 @@
 use bitcoin::hex::DisplayHex;
 use bitcoin_script::Script;
+use serde::ser::SerializeSeq;
 
 use super::utils::u32_to_le_bytes_minimal;
 use crate::signatures::winternitz;

@@ -57,12 +57,12 @@ impl InputProof {
 }
 
 #[derive(Debug)]
-pub(crate) struct InputProofRaw {
-    pub(crate) p2: [ark_ff::BigInt<4>; 2],
-    pub(crate) p4: [ark_ff::BigInt<4>; 2],
-    pub(crate) q4: [ark_ff::BigInt<4>; 4],
-    pub(crate) c: [ark_ff::BigInt<4>; 6],
-    pub(crate) ks: [ark_ff::BigInt<4>; NUM_PUBS],
+pub struct InputProofRaw {
+    pub p2: [ark_ff::BigInt<4>; 2],
+    pub p4: [ark_ff::BigInt<4>; 2],
+    pub q4: [ark_ff::BigInt<4>; 4],
+    pub c: [ark_ff::BigInt<4>; 6],
+    pub ks: [ark_ff::BigInt<4>; NUM_PUBS],
 }
 
 fn compare(hint_out: &DataType, claimed_assertions: &mut Option<Vec<HashBytes>>) -> Option<bool> {
