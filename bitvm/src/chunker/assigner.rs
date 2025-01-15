@@ -162,6 +162,10 @@ impl BridgeAssigner {
         let _ = groth16_verify_to_segments(self, &proof.public, &proof.proof, &proof.vk);
         self.bc_map.clone()
     }
+
+    pub fn bc_map(&mut self) -> BTreeMap<String, usize> {
+        self.bc_map.clone()
+    }
 }
 
 impl BCAssigner for BridgeAssigner {

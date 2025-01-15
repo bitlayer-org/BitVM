@@ -7,7 +7,7 @@ use musig2::{secp256k1::schnorr::Signature, PubNonce};
 use std::collections::HashMap;
 
 // TODO: set to larger value to be compatible with future tx modifications
-pub const RELAY_FEE_BUFFER_MULTIPLIER: f32 = 1.0;
+pub const RELAY_FEE_BUFFER_MULTIPLIER: u64 = 1;
 pub const MIN_RELAY_FEE_KICK_OFF_1: u64 = relay_fee(6231);
 pub const MIN_RELAY_FEE_START_TIME: u64 = relay_fee(407);
 pub const MIN_RELAY_FEE_START_TIME_TIMEOUT: u64 = relay_fee(264);
@@ -53,7 +53,7 @@ pub trait BaseTransaction {
 }
 
 pub const fn relay_fee(vsize: usize) -> u64 {
-    (vsize as f32 * RELAY_FEE_BUFFER_MULTIPLIER) as u64 * MIN_RELAY_FEE_RATE
+    (vsize as u64 * RELAY_FEE_BUFFER_MULTIPLIER as u64) as u64 * MIN_RELAY_FEE_RATE
 }
 
 pub fn merge_transactions(

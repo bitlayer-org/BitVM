@@ -8,7 +8,7 @@ use crate::treepp::*;
 use std::rc::Rc;
 
 /// Each segment is a branch in the taproot of disprove transaction.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Segment {
     pub name: String,
     pub script: Script,
