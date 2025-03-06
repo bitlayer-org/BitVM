@@ -126,6 +126,7 @@ pub(crate) fn groth16_generate_segments(
     push_compare_or_return!(p2);
 
     let msms = wrap_hint_msm(skip_evaluation, all_output_hints.len(), pub_scalars.clone(), vky.clone());
+    println!("length of msms segments {}", msms.len());
     for msm in &msms {
         push_compare_or_return!(msm);
     }

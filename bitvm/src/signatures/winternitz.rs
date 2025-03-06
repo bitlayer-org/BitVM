@@ -9,7 +9,7 @@ pub type PublicKey = Vec<HashOut>;
 pub type SecretKey = Vec<u8>;
 
 /// Contains the parameters to use with `Winternitz` struct
-#[derive(Serialize, Deserialize, Eq, PartialEq, Hash, Clone)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Hash, Clone, Debug)]
 pub struct Parameters {
     /// Number of blocks of the actual message 
     message_length: u32,
@@ -53,7 +53,7 @@ impl Parameters {
     }
 
     /// Number of bytes that can be represented at maximum with the parameters
-    fn byte_message_length(&self) -> u32 {
+    pub fn byte_message_length(&self) -> u32 {
         (self.message_length * self.block_length + 7) / 8
     }
 
@@ -474,6 +474,8 @@ impl Converter for ToBytesConverter {
 
 #[cfg(test)]
 mod test {
+    use crate::signatures::signing_winternitz::{WinternitzPublicKey, WinternitzSecret};
+
     use super::*;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
@@ -611,6 +613,19 @@ mod test {
             
         };
         run(s);
+    }
+
+    #[test]
+    fn test_parameter() {
+        let param = Parameters::new_by_bit_length(32, 4);
+        println!("{:?}", param);
+        let winternitz_sk = WinternitzSecret::new(4);
+        let winternitz_pk: WinternitzPublicKey = (&winternitz_sk).into();
+        let winternitz_verifier = Winternitz::<ListpickVerifier, ToBytesConverter>::new();
+        let sig = winternitz_verifier
+            .checksig_verify(&param, &winternitz_pk.public_key)
+            .len();
+        println!("{:?}", sig);
     }
 
     #[test]

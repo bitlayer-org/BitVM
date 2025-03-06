@@ -6,6 +6,7 @@ use crate::{bn254::{fp254impl::Fp254Impl, fr::Fr, msm::{BATCH_SIZE_PER_CHUNK, WI
 use super::{elements::{DataType, ElemG2Eval, ElementType}, taps_ext_miller::*, taps_msm::chunk_hash_p, taps_mul::{chunk_dense_dense_mul, chunk_fq12_square}, taps_point_ops::{chunk_init_t4, chunk_point_ops_and_multiply_line_evals_step_1, chunk_point_ops_and_multiply_line_evals_step_2}};
 use ark_ff::{AdditiveGroup, Field};
 use bitcoin_script::script;
+use serde::{Deserialize, Serialize};
 
 
 use super::taps_ext_miller::{chunk_final_verify, chunk_frob_fp12, chunk_hash_c, chunk_hash_c_inv};
@@ -14,7 +15,7 @@ use crate::treepp::Script;
 pub type SegmentID = u32;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Segment {
+pub struct Segment {
     pub id: SegmentID,
     pub parameter_ids: Vec<(SegmentID, ElementType)>,   
     pub result: (DataType, ElementType),
@@ -28,7 +29,7 @@ pub(crate) struct Segment {
 /// After the returned `script` and `witness` are executed together, only `OP_FALSE` left on the stack.
 /// If operator gives a wrong intermediate value, `OP_TRUE` will left on the stack and challenger will finish the slash.
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ScriptType {
     NonDeterministic,
     MSM(u32),

@@ -3,6 +3,7 @@ use std::str::FromStr;
 use crate::{bn254::utils::Hint, chunk::{helpers::{extern_bigint_to_nibbles, extern_hash_nibbles, extern_nibbles_to_bigint}, wrap_hasher::{BLAKE3_HASH_LENGTH}}};
 use ark_ff::Field;
 use num_bigint::{BigInt, BigUint};
+use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
 use super::helpers::{extern_hash_fps, extern_nibbles_to_limbs};
@@ -54,9 +55,8 @@ impl_try_from_element!(ElemG2Eval, { G2EvalData });
 /// data moved around Pairing Check will be interpreted
 /// Example: Uint256 is DataType, 
 /// FieldElement (ark_bn254::Fq) or ScalarElement (ark_bn254::Fr) are ElementTypes
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-pub(crate) enum ElementType {
-
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ElementType {
     /// type to represent second coefficient of normalized Fp12
     Fp6,
 
@@ -332,7 +332,7 @@ impl ElemG2Eval {
         extern_hash_fps(le)
     }
 
-    pub(crate) fn mock() -> Self {
+    pub fn mock() -> Self {
         let q4xc0: ark_bn254::Fq = ark_bn254::Fq::from(BigUint::from_str("18327300221956260726652878806040774028373651771658608258634994907375058801387").unwrap());
         let q4xc1: ark_bn254::Fq = ark_bn254::Fq::from(BigUint::from_str("2791853351403597124265928925229664715548948431563105825401192338793643440152").unwrap());
         let q4yc0: ark_bn254::Fq = ark_bn254::Fq::from(BigUint::from_str("9203020065248672543175273161372438565462224153828027408202959864555260432617").unwrap());
