@@ -27,7 +27,6 @@ colored.workspace = true
 itertools.workspace = true
 num-bigint.workspace = true
 ark-std.workspace = true
-ark-crypto-primitives.workspace = true
 ark-relations.workspace = true
 tqdm.workspace = true
 regex.workspace = true
