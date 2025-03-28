@@ -1,10 +1,11 @@
 use crate::autochunker::{intermediate_state::*, proof::RawProof};
 use crate::bn254::ell_coeffs::{AffinePairing, BnAffinePairing};
+use crate::groth16::constants::LAMBDA;
 use crate::groth16::offchain_checker::compute_c_wi;
-use ark_bn254::G1Affine;
+use ark_bn254::{Fq6, G1Affine};
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::Field;
-use log::info;
+use ark_ff::{AdditiveGroup, Field};
+use log::{info, warn};
 use std::ops::Neg;
 use std::sync::Arc;
 
@@ -68,11 +69,38 @@ impl From<RawProof> for ComputeCtx {
         let f = pairing
             .multi_miller_loop_affine([p1, p2, p3, p4], [q1, q2, q3, q4])
             .0;
+        let f_without_p1q1 = pairing
+            .multi_miller_loop_affine([p2, p3, p4], [q2, q3, q4])
+            .0;
         let (c, _) = compute_c_wi(f);
+        let c_inv = c.inverse().unwrap();
+        let result = f * (c_inv.pow(LAMBDA.to_u64_digits()));
+
+        if result.c1 != Fq6::ZERO {
+            warn!(
+                "check the result of pairing: {:?}, proof is not correct",
+                result
+            );
+        } else {
+            info!(
+                "check the result of pairing: {:?}, proof is correct",
+                result
+            );
+        }
 
         Self {
             proof: raw_proof,
             msm_points_from_pk: msm_gs,
         }
+    }
+}
+
+mod tests {
+    use crate::autochunker::{primitve_functions::ComputeCtx, proof::RawProof};
+
+    #[test_log::test]
+    fn test_raw_proof_to_compute_ctx() {
+        let raw_proof = RawProof::mock_proof();
+        let _: ComputeCtx = raw_proof.into();
     }
 }
