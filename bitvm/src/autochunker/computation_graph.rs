@@ -104,6 +104,8 @@ pub fn new_script<'a>(
 
 /// BitVM Graph
 use std::sync::RwLock;
+
+use super::primitve_functions::ComputeCtx;
 pub type BitVMGraph = Arc<RwLock<Graph<String, NodeInfo>>>;
 
 pub struct GraphContext {
@@ -130,4 +132,17 @@ impl GraphContext {
     pub fn write_local(&self, path: &str) -> std::io::Result<()> {
         readwrite::graphml::write_graphml_file(&self.graph.read().unwrap(), path)
     }
+}
+
+pub fn compute_states(graph: &GraphContext, ctx: ComputeCtx) {
+    let graph = graph.graph.clone();
+    let mut graph = graph.write().unwrap();
+    let inputs: Vec<String> = graph
+        .get_all_node_names()
+        .into_iter()
+        .filter(|x| graph.get_node_in_degree(x.to_string()).unwrap() == 0)
+        .map(|x| x.to_string())
+        .collect();
+
+    println!("inputs: {:?}", inputs);
 }

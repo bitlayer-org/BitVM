@@ -1,4 +1,4 @@
-use ark_bn254::{Fq, Fq2};
+use ark_bn254::{Fq, Fq2, Fr};
 use ark_ec::models::bn::Bn;
 use ark_ec::pairing::Pairing;
 use paste::paste;
@@ -9,6 +9,7 @@ const U254_BYTES: usize = 4 * 9;
 
 #[derive(Debug, Clone)]
 pub enum State {
+    Fr(Option<Fr>),
     Fq(Option<Fq>),
     G1(Option<G1>),
     Fq2(Option<Fq2>),
@@ -70,6 +71,7 @@ macro_rules! impl_state_functions {
                 }
             }
 
+            #[allow(unused)]
             pub fn bit_commitment_cost(&self) -> usize {
                 match self {
                     $(State::$state_type(_) => $bit_cost,)*
@@ -90,5 +92,6 @@ macro_rules! impl_state_functions {
 impl_state_functions! {
     Fq, 1, 6788;
     G1, 2, 13196;
-    Fq2, 2, 13196
+    Fq2, 2, 13196;
+    Fr, 1, 6788
 }

@@ -8,20 +8,20 @@ use paste::paste;
 
 // Define the `define_script` macro
 macro_rules! define_input {
-    ($context:ident, $name:tt, $state_type:ident, $func:ident) => {
+    ($context:ident, $name:tt, $state_type:ident, $func:expr) => {
         paste! {
             let state = State::[<new_ $state_type:lower>]();
             let var_name = $context.variable_prefix.clone() + &stringify!($name).to_owned();
-            let $name = new_input(&mut $context.graph, var_name, state, $func());
+            let $name = new_input(&mut $context.graph, var_name, state, $func);
         }
     };
 }
 
 macro_rules! define_script {
     // name hasn't been defined
-    ($context: ident, $name: ident, $state_type:ident, [$($input:ident),*], $func:ident) => {
-        let (function, script_size) = $func();
-        let var_name = $context.variable_prefix.clone() + &stringify!($name).to_owned();
+    ($context: ident, $name: ident, $state_type:ident, [$($input:ident),*], $func:expr) => {
+        let (function, script_size) = $func;
+        let var_name = $context.variable_prefix.clone() + "_" + &stringify!($name).to_owned();
         let mut inputs = vec![];
         $(inputs.push(&$input);)*
         paste!{
@@ -40,9 +40,9 @@ macro_rules! define_script {
 
 macro_rules! define_overide_script {
     // name has been defined and override
-    ($context: ident, $name: ident, $state_type:ident, [$($input:ident),*], $func:ident) => {
-        let (function, script_size) = $func();
-        let var_name = $context.variable_prefix.clone() + &stringify!($name).to_owned();
+    ($context: ident, $name: ident, $state_type:ident, [$($input:ident),*], $func:expr) => {
+        let (function, script_size) = $func;
+        let var_name = $context.variable_prefix.clone() + "_" + &stringify!($name).to_owned();
         let mut inputs = vec![];
         $(inputs.push(&$input);)*
         paste!{
@@ -81,27 +81,40 @@ fn main_test() {
         // Saying we have 5 scalars to multiply, we can use a graph to represent the computation
         // [scalar0, scalar1, scalar2, scalar3, scalar4] X [K0, K1, K2, K3, K4] = P3
 
-        define_input!(ctx, scalar0, Fq, fake_input);
-        define_input!(ctx, scalar1, Fq, fake_input);
-        define_input!(ctx, scalar2, Fq, fake_input);
-        define_input!(ctx, scalar3, Fq, fake_input);
-        define_input!(ctx, scalar4, Fq, fake_input);
+        define_input!(ctx, scalar0, Fq, extract_scalar(0));
+        define_input!(ctx, scalar1, Fq, extract_scalar(1));
+        define_input!(ctx, scalar2, Fq, extract_scalar(2));
+        define_input!(ctx, scalar3, Fq, extract_scalar(3));
+        define_input!(ctx, scalar4, Fq, extract_scalar(4));
 
         // pub const WINDOW_G1_MSM: u32 = 8; pub const BATCH_SIZE_PER_CHUNK: u32 = 1;
         // --> 302955
         // msm0 script, scalar0 is a input a msm0 script
-        define_script!(ctx, msm0_0, G1, [scalar0], msm_step_initial);
+        let window_size = 8;
+        define_script!(ctx, msm0_0, G1, [scalar0], msm_initial(window_size));
         let mut msm_acc = msm0_0;
 
-        for i in 1..32 {
+        for i in 1..windows_of_mul_table(window_size) {
             let mut ctx = ctx.inner_context(&format!("0_{}", i));
-            define_overide_script!(ctx, msm_acc, G1, [scalar0, msm_acc], msm_step_initial);
+            define_overide_script!(
+                ctx,
+                msm_acc,
+                G1,
+                [scalar0, msm_acc],
+                msm_steps(0, i, window_size)
+            );
         }
 
         for (idx, input_node) in [scalar1, scalar2, scalar3, scalar4].into_iter().enumerate() {
-            for i in 0..32 {
-                let mut ctx = ctx.inner_context(&format!("{}_{}", idx, i));
-                define_overide_script!(ctx, msm_acc, G1, [input_node, msm_acc], msm_step_initial);
+            for i in 0..windows_of_mul_table(window_size) {
+                let mut ctx = ctx.inner_context(&format!("{}_{}", idx + 1, i));
+                define_overide_script!(
+                    ctx,
+                    msm_acc,
+                    G1,
+                    [input_node, msm_acc],
+                    msm_steps(idx, i, window_size)
+                );
             }
         }
     }
@@ -225,6 +238,7 @@ fn main_test() {
         );
     */
 
-    ctx.write_local("../graphml2mermaid/graph.graphml")
+    compute_states(&ctx, RawProof::mock_proof().into());
+    ctx.write_local("/Users/yufengzhang/Workplace/bitlayer/graphml2mermaid/graph.graphml")
         .expect("write graph fail");
 }

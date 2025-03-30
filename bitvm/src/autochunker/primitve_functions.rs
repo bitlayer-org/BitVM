@@ -1,11 +1,14 @@
 use crate::autochunker::{intermediate_state::*, proof::RawProof};
 use crate::bn254::ell_coeffs::{AffinePairing, BnAffinePairing};
+use crate::bn254::fp254impl::Fp254Impl;
+use crate::bn254::utils::fq_to_bits;
 use crate::groth16::constants::LAMBDA;
 use crate::groth16::offchain_checker::compute_c_wi;
-use ark_bn254::{Fq6, G1Affine};
+use ark_bn254::{Fq, Fq6, Fr, G1Affine};
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::{AdditiveGroup, Field};
+use ark_ff::{AdditiveGroup, Field, One, PrimeField};
 use log::{info, warn};
+use num_bigint::BigUint;
 use std::ops::Neg;
 use std::sync::Arc;
 
@@ -14,24 +17,7 @@ pub type ComputeFn = Box<Arc<dyn Fn(ComputeCtx, Vec<State>) -> State + Send + Sy
 pub struct ComputeCtx {
     proof: RawProof,
     msm_points_from_pk: Vec<G1Affine>,
-}
-
-// TODO: abstract to a well-defined script
-pub fn msm_step_initial() -> (ComputeFn, usize) {
-    fn func(compute_ctx: ComputeCtx, inputs: Vec<State>) -> State {
-        assert!(inputs.len() == 1);
-        let input = inputs[0].get_fq();
-        // todo: some bits of input
-        State::Fq(None)
-    }
-    (Box::new(Arc::new(func)), 302955)
-}
-
-pub fn fake_input() -> ComputeFn {
-    fn func(compute_ctx: ComputeCtx, _inputs: Vec<State>) -> State {
-        State::Fq(None)
-    }
-    Box::new(Arc::new(func))
+    msm_scalars: Vec<Fr>,
 }
 
 impl From<RawProof> for ComputeCtx {
@@ -40,6 +26,7 @@ impl From<RawProof> for ComputeCtx {
 
         let mut msm_scalar = raw_proof.public.clone();
         msm_scalar.reverse();
+
         let mut msm_gs = raw_proof.vk.gamma_abc_g1.clone(); // vk.vk_pubs[0]
         msm_gs.reverse();
 
@@ -91,8 +78,89 @@ impl From<RawProof> for ComputeCtx {
         Self {
             proof: raw_proof,
             msm_points_from_pk: msm_gs,
+            msm_scalars: msm_scalar,
         }
     }
+}
+
+/// window multiplication
+pub fn msm_initial(window: usize) -> (ComputeFn, usize) {
+    // the first step of msm
+    let (index, chunk_index) = (0, 0);
+
+    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+        assert!(inputs.len() == 1);
+
+        // get the scalar and base
+        let scalar = inputs[index].get_fq();
+        let base: G1Affine = compute_ctx
+            .msm_points_from_pk
+            .get(index)
+            .expect("at least one public input")
+            .clone();
+
+        // precompute fr to bits
+        let scalar_chunks = fq_to_bits(scalar.into_bigint(), window); // {a_0, ..,a_N}
+        info!(
+            "windows of mul table: {}",
+            (crate::bn254::fr::Fr::N_BITS as usize + window - 1) / window
+        );
+
+        // doubled based + current windows' result
+        let doubled_base = (base * Fr::from(1 << (chunk_index * window))).into_affine(); // (2^(w.i) P)
+        let window_result = (base * Fr::from(scalar_chunks[chunk_index])).into_affine();
+
+        State::G1(Some((doubled_base + window_result).into_affine()))
+    };
+
+    (Box::new(Arc::new(func)), 302955)
+}
+
+pub fn windows_of_mul_table(window: usize) -> usize {
+    let tables = (crate::bn254::fr::Fr::N_BITS as usize + window - 1) / window;
+    info!("windows of mul table: {}", tables);
+    tables
+}
+
+pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn, usize) {
+    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+        assert!(inputs.len() == 2);
+
+        // get the accumulator of msm
+        let msm_acc = inputs[1].get_g1();
+
+        // get the scalar and base
+        let scalar = inputs[0].get_fq();
+        let base: G1Affine = compute_ctx
+            .msm_points_from_pk
+            .get(index)
+            .expect("at least one public input")
+            .clone();
+
+        // precompute fr to bits
+        let scalar_chunks = fq_to_bits(scalar.into_bigint(), window); // {a_0, ..,a_N}
+
+        // doubled based + current windows' result
+        let doubled_base = (base * Fr::from(1 << (chunk_index * window))).into_affine(); // (2^(w.i) P)
+        let window_result = (base * Fr::from(scalar_chunks[chunk_index])).into_affine();
+
+        State::G1(Some((doubled_base + window_result + msm_acc).into_affine()))
+    };
+
+    (Box::new(Arc::new(func)), 302955)
+}
+
+pub fn extract_scalar(index: usize) -> ComputeFn {
+    let func = move |compute_ctx: ComputeCtx, _inputs: Vec<State>| -> State {
+        State::Fr(Some(
+            compute_ctx
+                .msm_scalars
+                .get(index)
+                .expect("index out of range")
+                .clone(),
+        ))
+    };
+    Box::new(Arc::new(func))
 }
 
 mod tests {
