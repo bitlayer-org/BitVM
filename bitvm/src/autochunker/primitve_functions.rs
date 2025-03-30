@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 pub type ComputeFn = Box<Arc<dyn Fn(ComputeCtx, Vec<State>) -> State + Send + Sync + 'static>>;
 
+#[derive(Debug, Clone)]
 pub struct ComputeCtx {
     proof: RawProof,
     msm_points_from_pk: Vec<G1Affine>,
@@ -92,7 +93,7 @@ pub fn msm_initial(window: usize) -> (ComputeFn, usize) {
         assert!(inputs.len() == 1);
 
         // get the scalar and base
-        let scalar = inputs[index].get_fq();
+        let scalar = inputs[index].get_fr();
         let base: G1Affine = compute_ctx
             .msm_points_from_pk
             .get(index)
@@ -130,7 +131,7 @@ pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn,
         let msm_acc = inputs[1].get_g1();
 
         // get the scalar and base
-        let scalar = inputs[0].get_fq();
+        let scalar = inputs[0].get_fr();
         let base: G1Affine = compute_ctx
             .msm_points_from_pk
             .get(index)
@@ -141,7 +142,8 @@ pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn,
         let scalar_chunks = fq_to_bits(scalar.into_bigint(), window); // {a_0, ..,a_N}
 
         // doubled based + current windows' result
-        let doubled_base = (base * Fr::from(1 << (chunk_index * window))).into_affine(); // (2^(w.i) P)
+        let doubled_base =
+            (base * Fr::from(BigUint::one() << (chunk_index * window))).into_affine(); // (2^(w.i) P)
         let window_result = (base * Fr::from(scalar_chunks[chunk_index])).into_affine();
 
         State::G1(Some((doubled_base + window_result + msm_acc).into_affine()))

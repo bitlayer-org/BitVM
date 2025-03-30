@@ -23,7 +23,7 @@ macro_rules! define_script {
         let (function, script_size) = $func;
         let var_name = $context.variable_prefix.clone() + "_" + &stringify!($name).to_owned();
         let mut inputs = vec![];
-        $(inputs.push(&$input);)*
+        $(inputs.push($input.clone());)*
         paste!{
             let state = State::[<new_ $state_type:lower>]();
             let $name = new_script(
@@ -44,7 +44,7 @@ macro_rules! define_overide_script {
         let (function, script_size) = $func;
         let var_name = $context.variable_prefix.clone() + "_" + &stringify!($name).to_owned();
         let mut inputs = vec![];
-        $(inputs.push(&$input);)*
+        $(inputs.push($input.clone());)*
         paste!{
             let state = State::[<new_ $state_type:lower>]();
             $name = new_script(
@@ -81,11 +81,11 @@ fn main_test() {
         // Saying we have 5 scalars to multiply, we can use a graph to represent the computation
         // [scalar0, scalar1, scalar2, scalar3, scalar4] X [K0, K1, K2, K3, K4] = P3
 
-        define_input!(ctx, scalar0, Fq, extract_scalar(0));
-        define_input!(ctx, scalar1, Fq, extract_scalar(1));
-        define_input!(ctx, scalar2, Fq, extract_scalar(2));
-        define_input!(ctx, scalar3, Fq, extract_scalar(3));
-        define_input!(ctx, scalar4, Fq, extract_scalar(4));
+        define_input!(ctx, scalar0, Fr, extract_scalar(0));
+        define_input!(ctx, scalar1, Fr, extract_scalar(1));
+        define_input!(ctx, scalar2, Fr, extract_scalar(2));
+        define_input!(ctx, scalar3, Fr, extract_scalar(3));
+        define_input!(ctx, scalar4, Fr, extract_scalar(4));
 
         // pub const WINDOW_G1_MSM: u32 = 8; pub const BATCH_SIZE_PER_CHUNK: u32 = 1;
         // --> 302955

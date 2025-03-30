@@ -59,6 +59,13 @@ macro_rules! impl_state_functions {
             }
 
             #[allow(unused)]
+            pub fn get_type_name(&self) -> &str {
+                match self {
+                    $(State::$state_type(_) => stringify!($state_type),)*
+                }
+            }
+
+            #[allow(unused)]
             pub fn spawn_new_state(&self) -> State {
                 match self {
                     $(State::$state_type(_) => State::$state_type(None),)*
@@ -82,6 +89,7 @@ macro_rules! impl_state_functions {
             pub fn get_bytes_of_state(&self) -> usize {
                 self.get_number_of_fq_elements() * U254_BYTES
             }
+
         }
     }
     };

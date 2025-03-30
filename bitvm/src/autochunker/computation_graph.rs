@@ -1,8 +1,13 @@
 use crate::autochunker::intermediate_state::State;
 use crate::autochunker::primitve_functions::ComputeFn;
+use core::borrow;
 use graphrs::readwrite;
 use graphrs::{Edge, Graph, Node};
-use std::sync::Arc;
+use log::{info, warn};
+use std::cell::RefCell;
+use std::collections::{HashSet, VecDeque};
+use std::sync::{Arc, Mutex};
+use tqdm::refresh;
 
 #[derive(Clone)]
 pub struct NodeInfo {
@@ -63,7 +68,7 @@ pub fn new_input(
         function: compute_fn,
     };
     let node = BitVMNode::new_node(name, node_info);
-    graph.write().unwrap().add_node(node.clone());
+    graph.lock().unwrap().add_node(node.clone());
     node
 }
 
@@ -73,7 +78,7 @@ pub fn new_script<'a>(
     script_size: usize,
     compute_fn: ComputeFn,
     state: State,
-    inputs: Vec<&BitVMNode>,
+    inputs: Vec<BitVMNode>,
 ) -> BitVMNode {
     let node_info = NodeInfo {
         script_size,
@@ -81,7 +86,7 @@ pub fn new_script<'a>(
         function: compute_fn,
     };
     let node = BitVMNode::new_node(name.clone(), node_info);
-    graph.write().unwrap().add_node(node.clone());
+    graph.lock().unwrap().add_node(node.clone());
     for input in inputs {
         let edge = BitVMEdge::new_edge(
             input.name.clone(),
@@ -94,7 +99,7 @@ pub fn new_script<'a>(
                 .bit_commitment_cost(),
         );
         graph
-            .write()
+            .lock()
             .unwrap()
             .add_edge(edge)
             .expect(format!("fail to add edge: {} --> {}", input.name, name.clone()).as_str());
@@ -103,10 +108,8 @@ pub fn new_script<'a>(
 }
 
 /// BitVM Graph
-use std::sync::RwLock;
-
 use super::primitve_functions::ComputeCtx;
-pub type BitVMGraph = Arc<RwLock<Graph<String, NodeInfo>>>;
+pub type BitVMGraph = Arc<Mutex<Graph<String, NodeInfo>>>;
 
 pub struct GraphContext {
     pub graph: BitVMGraph,
@@ -117,7 +120,7 @@ impl GraphContext {
     pub fn new(variable_prefix: &str) -> Self {
         let graph: Graph<String, NodeInfo> = Graph::new(graphrs::GraphSpecs::directed());
         GraphContext {
-            graph: Arc::new(RwLock::new(graph)),
+            graph: Arc::new(Mutex::new(graph)),
             variable_prefix: variable_prefix.to_string(),
         }
     }
@@ -130,19 +133,109 @@ impl GraphContext {
     }
 
     pub fn write_local(&self, path: &str) -> std::io::Result<()> {
-        readwrite::graphml::write_graphml_file(&self.graph.read().unwrap(), path)
+        let graph = self.graph.lock().unwrap();
+        readwrite::graphml::write_graphml_file(&graph, path)
     }
 }
 
-pub fn compute_states(graph: &GraphContext, ctx: ComputeCtx) {
-    let graph = graph.graph.clone();
-    let mut graph = graph.write().unwrap();
-    let inputs: Vec<String> = graph
-        .get_all_node_names()
-        .into_iter()
-        .filter(|x| graph.get_node_in_degree(x.to_string()).unwrap() == 0)
-        .map(|x| x.to_string())
-        .collect();
+pub fn compute_states(graph_ctx: &GraphContext, ctx: ComputeCtx) {
+    let inputs: Vec<String> = {
+        let graph = graph_ctx.graph.lock().unwrap();
 
-    println!("inputs: {:?}", inputs);
+        graph
+            .get_all_node_names()
+            .into_iter()
+            .filter(|x| graph.get_node_in_degree(x.to_string()).unwrap() == 0)
+            .map(|x| x.to_string())
+            .collect()
+    };
+
+    info!("inputs: {:?}", inputs);
+
+    let mut set_x: VecDeque<String> = VecDeque::from(inputs);
+    let mut set_y_count = 0;
+
+    #[allow(while_true)]
+    'main: while true {
+        // no element in set x left
+        let x = match set_x.pop_front() {
+            Some(x) => x,
+            None => {
+                break;
+            }
+        };
+
+        info!("handle {}", x);
+
+        let mut predecessor_states: Vec<State> = vec![];
+        {
+            let graph = graph_ctx.graph.lock().unwrap();
+            for name in graph.get_predecessor_node_names(x.clone()).unwrap().iter() {
+                let state = graph
+                    .get_node(name.to_string())
+                    .unwrap()
+                    .attributes
+                    .as_ref()
+                    .unwrap()
+                    .state
+                    .clone();
+                // if some states are not filled, put it to the end of queue
+                if !state.is_filled() {
+                    // set_x.push_back(x.clone());
+                    warn!(
+                        "the predecessor {} of {} are not all filled, drop it",
+                        name, x
+                    );
+                    continue 'main;
+                }
+                info!("predecessor of {} captured", x);
+                predecessor_states.push(state);
+            }
+        }
+
+        let mut cur_node_info = {
+            let graph = graph_ctx.graph.lock().unwrap();
+            // extract function from node
+            let node = graph.get_node(x.clone()).unwrap();
+            node.attributes.as_ref().unwrap().clone()
+        };
+
+        // execute function
+        let result_state = (cur_node_info.function)(ctx.clone(), predecessor_states);
+
+        // update attributes
+        assert_eq!(
+            cur_node_info.state.get_type_name(),
+            result_state.get_type_name()
+        );
+        cur_node_info.state = result_state;
+
+        // prepare new node outside of mutable borrow
+        let new_node = BitVMNode::new_node(x.to_string(), cur_node_info);
+
+        // update node in graph
+        {
+            let mut graph = graph_ctx.graph.lock().unwrap();
+            graph.add_node(new_node);
+        }
+        set_y_count += 1;
+
+        // add successors to the front of queue
+        {
+            let graph = graph_ctx.graph.lock().unwrap();
+            graph
+                .get_successor_node_names(x.to_string())
+                .unwrap()
+                .into_iter()
+                .rev()
+                .for_each(|x| set_x.push_front(x.to_string()));
+        }
+    }
+
+    let graph = graph_ctx.graph.lock().unwrap();
+    info!(
+        "finished states / total states = {} / {}",
+        set_y_count,
+        graph.number_of_nodes(),
+    );
 }
