@@ -20,6 +20,8 @@ pub struct ComputeCtx {
     msm_points_from_pk: Vec<G1Affine>,
     msm_scalars: Vec<Fr>,
     vky0: G1Affine,
+    p2: G1Affine,
+    p4: G1Affine,
 }
 
 impl From<RawProof> for ComputeCtx {
@@ -94,6 +96,8 @@ impl From<RawProof> for ComputeCtx {
             msm_points_from_pk: msm_gs,
             msm_scalars: msm_scalar,
             vky0: vky0,
+            p2: p2,
+            p4: p4,
         }
     }
 }
@@ -183,6 +187,55 @@ pub fn extract_scalar(index: usize) -> ComputeFn {
                 .expect("index out of range")
                 .clone(),
         ))
+    };
+    Box::new(Arc::new(func))
+}
+
+pub fn scalar_valid() -> (ComputeFn, usize) {
+    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 1);
+        State::CheckValid(Some(true))
+    };
+    // TODO: check valid of scalar from script
+    (Box::new(Arc::new(func)), 0)
+}
+
+// extract proof.c
+pub fn extract_p2() -> ComputeFn {
+    let func = move |compute_ctx: ComputeCtx, _inputs: Vec<State>| -> State {
+        State::G1(Some(compute_ctx.p2.clone()))
+    };
+    Box::new(Arc::new(func))
+}
+
+// check validation of a G1 point
+pub fn check_g1_point() -> (ComputeFn, usize) {
+    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 1);
+        State::CheckValid(Some(true))
+    };
+    (Box::new(Arc::new(func)), 0)
+}
+
+// for the optimization of line evaluation
+pub fn tweak_point() -> (ComputeFn, usize) {
+    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 1);
+        let point = inputs[0].get_g1();
+        let tweak_point = G1 {
+            x: -point.x / point.y,
+            y: point.y.inverse().unwrap(),
+            infinity: false,
+        };
+        State::G1(Some(compute_ctx.p2.clone()))
+    };
+    (Box::new(Arc::new(func)), 0)
+}
+
+// extrac proof.a
+pub fn extract_p4() -> ComputeFn {
+    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+        State::G1(Some(compute_ctx.p4.clone()))
     };
     Box::new(Arc::new(func))
 }

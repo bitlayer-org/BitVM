@@ -4,7 +4,7 @@ use ark_ec::pairing::Pairing;
 use paste::paste;
 
 pub type G1 = <Bn<ark_bn254::Config> as Pairing>::G1Affine;
-
+pub type CheckValid = bool;
 const U254_BYTES: usize = 4 * 9;
 
 #[derive(Debug, Clone)]
@@ -13,6 +13,7 @@ pub enum State {
     Fq(Option<Fq>),
     G1(Option<G1>),
     Fq2(Option<Fq2>),
+    CheckValid(Option<CheckValid>), // Use CheckValid for input verify or final accumulator verify
 }
 
 macro_rules! basic_functions {
@@ -101,5 +102,6 @@ impl_state_functions! {
     Fq, 1, 6788;
     G1, 2, 13196;
     Fq2, 2, 13196;
-    Fr, 1, 6788
+    Fr, 1, 6788;
+    CheckValid, 0, 0
 }

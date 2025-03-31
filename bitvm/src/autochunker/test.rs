@@ -90,6 +90,13 @@ fn main_test() {
         define_input!(ctx, scalar3, Fr, extract_scalar(3));
         define_input!(ctx, scalar4, Fr, extract_scalar(4));
 
+        // check the valid of scalar, scalar should be less than Fq::MOUDLES
+        define_script!(ctx, _check_scalar0, CheckValid, [scalar0], scalar_valid());
+        define_script!(ctx, _check_scalar1, CheckValid, [scalar1], scalar_valid());
+        define_script!(ctx, _check_scalar2, CheckValid, [scalar2], scalar_valid());
+        define_script!(ctx, _check_scalar3, CheckValid, [scalar3], scalar_valid());
+        define_script!(ctx, _check_scalar4, CheckValid, [scalar4], scalar_valid());
+
         // pub const WINDOW_G1_MSM: u32 = 8; pub const BATCH_SIZE_PER_CHUNK: u32 = 1;
         // --> 302955
         // msm0 script, scalar0 is a input a msm0 script
@@ -122,7 +129,6 @@ fn main_test() {
         }
     }
 
-    /*
     // =========================================================================================================
 
     // Phase 2: Pairing Computation
@@ -130,18 +136,23 @@ fn main_test() {
     // 2.1 precompute point in G1 for the optimization in https://eprint.iacr.org/2013/722.pdf
     // y_p' -> 1 / y_p, x_p' -> - y_p / x_p
     // chunk_precompute_p disprovable(true) script 340846 stack 654
-    let p2 = new_input(&mut graph, "P2(alias proof.c)".into());
+    {
+        let mut ctx = ctx.inner_context("Pairing");
+        define_input!(ctx, p2, G1, extract_p2());
+        define_script!(ctx, p2_check, CheckValid, [p2], check_g1_point());
+        define_script!(ctx, _p2_tweak, G1, [p2], tweak_point());
+
+        define_input!(ctx, p4, G1, extract_p4());
+        define_script!(ctx, _p4_check, CheckValid, [p4], check_g1_point());
+        define_script!(ctx, p4_tweak, G1, [p4], tweak_point());
+    }
+    /*
     let p2_tweak = new_script(&mut graph, "p2_tweak".into(), 340846, vec![(&p2, G1_BYTES)]);
 
     let p4 = new_input(&mut graph, "P4(alias proof.a)".into());
     let p4_tweak = new_script(&mut graph, "p4_tweak".into(), 340846, vec![(&p4, G1_BYTES)]);
 
-    let p3 = new_script(
-        &mut graph,
-        "P3(msm result + vk0)".into(),
-        275335,
-        vec![(&msm_acc, G1_BYTES)],
-    );
+    let p3 = msm_acc;
     let p3_tweak = new_script(&mut graph, "p3_tweak".into(), 340301, vec![(&p3, G1_BYTES)]);
 
     // 2.2 check c \cdot c_inv is the identity
@@ -239,8 +250,12 @@ fn main_test() {
             271496,
             vec![(&p3_tweak, G1_BYTES)],
         );
+    }
     */
+
     let time = time::Instant::now();
+
+    // compute all states
     compute_states(&ctx, RawProof::mock_proof().into());
     {
         let lock_guard = ctx.graph.lock().unwrap();
