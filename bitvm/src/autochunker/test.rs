@@ -1,9 +1,12 @@
+use std::time;
+
 use crate::autochunker::computation_graph::*;
 // use utils::*;
 use crate::autochunker::intermediate_state::*;
 use crate::autochunker::primitve_functions::*;
 use crate::autochunker::proof::*;
 
+use log::info;
 use paste::paste;
 
 // Define the `define_script` macro
@@ -113,7 +116,7 @@ fn main_test() {
                     msm_acc,
                     G1,
                     [input_node, msm_acc],
-                    msm_steps(idx, i, window_size)
+                    msm_steps(idx + 1, i, window_size)
                 );
             }
         }
@@ -237,8 +240,22 @@ fn main_test() {
             vec![(&p3_tweak, G1_BYTES)],
         );
     */
-
+    let time = time::Instant::now();
     compute_states(&ctx, RawProof::mock_proof().into());
+    {
+        let lock_guard = ctx.graph.lock().unwrap();
+        for i in 0..5 {
+            let node = lock_guard
+                .get_node(format!("groth16_verifierMSM{}_31_msm_acc", i))
+                .unwrap();
+            let state = &node.attributes.as_ref().unwrap().state;
+            let msm_result = state.get_g1();
+            info!("step {}, msm_result: {:?}", i, msm_result);
+        }
+    }
+
+    info!("the cost time of computing states: {:?}", time.elapsed());
+
     ctx.write_local("/Users/yufengzhang/Workplace/bitlayer/graphml2mermaid/graph.graphml")
         .expect("write graph fail");
 }

@@ -3,9 +3,9 @@ use crate::autochunker::primitve_functions::ComputeFn;
 use core::borrow;
 use graphrs::readwrite;
 use graphrs::{Edge, Graph, Node};
-use log::{info, warn};
+use log::{debug, info, warn};
 use std::cell::RefCell;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use tqdm::refresh;
 
@@ -17,6 +17,7 @@ pub struct NodeInfo {
     pub state: State,
     #[allow(unused)]
     pub function: ComputeFn,
+    pub predecessor: Vec<String>,
 }
 
 impl std::fmt::Debug for NodeInfo {
@@ -66,6 +67,7 @@ pub fn new_input(
         script_size: 0,
         state: state.clone(),
         function: compute_fn,
+        predecessor: vec![],
     };
     let node = BitVMNode::new_node(name, node_info);
     graph.lock().unwrap().add_node(node.clone());
@@ -80,10 +82,12 @@ pub fn new_script<'a>(
     state: State,
     inputs: Vec<BitVMNode>,
 ) -> BitVMNode {
+    let predecessor: Vec<String> = inputs.iter().map(|x| x.name.to_string()).collect();
     let node_info = NodeInfo {
         script_size,
         state: state.clone(),
         function: compute_fn,
+        predecessor,
     };
     let node = BitVMNode::new_node(name.clone(), node_info);
     graph.lock().unwrap().add_node(node.clone());
@@ -152,25 +156,35 @@ pub fn compute_states(graph_ctx: &GraphContext, ctx: ComputeCtx) {
 
     info!("inputs: {:?}", inputs);
 
-    let mut set_x: VecDeque<String> = VecDeque::from(inputs);
+    let mut queue_x: VecDeque<String> = VecDeque::from(inputs.clone());
+    let mut set_x: HashSet<String> = HashSet::from_iter(inputs.into_iter());
+    let mut set_y: HashSet<String> = HashSet::new();
     let mut set_y_count = 0;
 
     #[allow(while_true)]
     'main: while true {
         // no element in set x left
-        let x = match set_x.pop_front() {
+        let x = match queue_x.pop_front() {
             Some(x) => x,
             None => {
                 break;
             }
         };
+        set_x.remove(&x);
 
-        info!("handle {}", x);
+        debug!("handle {}, set_x: {:?}", x, queue_x);
+
+        let mut cur_node_info = {
+            let graph = graph_ctx.graph.lock().unwrap();
+            // extract function from node
+            let node = graph.get_node(x.clone()).unwrap();
+            node.attributes.as_ref().unwrap().clone()
+        };
 
         let mut predecessor_states: Vec<State> = vec![];
         {
             let graph = graph_ctx.graph.lock().unwrap();
-            for name in graph.get_predecessor_node_names(x.clone()).unwrap().iter() {
+            for name in cur_node_info.predecessor.iter() {
                 let state = graph
                     .get_node(name.to_string())
                     .unwrap()
@@ -188,17 +202,10 @@ pub fn compute_states(graph_ctx: &GraphContext, ctx: ComputeCtx) {
                     );
                     continue 'main;
                 }
-                info!("predecessor of {} captured", x);
+                debug!("predecessor of {} captured", x);
                 predecessor_states.push(state);
             }
         }
-
-        let mut cur_node_info = {
-            let graph = graph_ctx.graph.lock().unwrap();
-            // extract function from node
-            let node = graph.get_node(x.clone()).unwrap();
-            node.attributes.as_ref().unwrap().clone()
-        };
 
         // execute function
         let result_state = (cur_node_info.function)(ctx.clone(), predecessor_states);
@@ -218,6 +225,8 @@ pub fn compute_states(graph_ctx: &GraphContext, ctx: ComputeCtx) {
             let mut graph = graph_ctx.graph.lock().unwrap();
             graph.add_node(new_node);
         }
+
+        set_y.insert(x.to_string());
         set_y_count += 1;
 
         // add successors to the front of queue
@@ -228,7 +237,12 @@ pub fn compute_states(graph_ctx: &GraphContext, ctx: ComputeCtx) {
                 .unwrap()
                 .into_iter()
                 .rev()
-                .for_each(|x| set_x.push_front(x.to_string()));
+                .for_each(|x| {
+                    if !set_x.contains(x) && !set_y.contains(x) {
+                        queue_x.push_front(x.to_string());
+                        set_x.insert(x.to_string());
+                    }
+                });
         }
     }
 

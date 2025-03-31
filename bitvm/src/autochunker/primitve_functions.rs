@@ -4,10 +4,10 @@ use crate::bn254::fp254impl::Fp254Impl;
 use crate::bn254::utils::fq_to_bits;
 use crate::groth16::constants::LAMBDA;
 use crate::groth16::offchain_checker::compute_c_wi;
-use ark_bn254::{Fq, Fq6, Fr, G1Affine};
+use ark_bn254::{Fq, Fq6, Fr, G1Affine, G1Projective};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{AdditiveGroup, Field, One, PrimeField};
-use log::{info, warn};
+use log::{debug, info, warn};
 use num_bigint::BigUint;
 use std::ops::Neg;
 use std::sync::Arc;
@@ -19,6 +19,7 @@ pub struct ComputeCtx {
     proof: RawProof,
     msm_points_from_pk: Vec<G1Affine>,
     msm_scalars: Vec<Fr>,
+    vky0: G1Affine,
 }
 
 impl From<RawProof> for ComputeCtx {
@@ -33,16 +34,26 @@ impl From<RawProof> for ComputeCtx {
 
         let vky0 = msm_gs.pop().unwrap();
 
-        let mut p3 = vky0 * ark_bn254::Fr::ONE;
+        let mut p3 = G1Projective::ZERO;
+
+        p3 = p3 + vky0 * ark_bn254::Fr::ONE;
 
         for i in 0..raw_proof.public.len() {
             let result = msm_gs[i] * msm_scalar[i];
-            info!(
+            debug!(
                 "msm for {}, scalar {:?} x point {:?} = {:?}",
                 i, msm_gs[i], msm_scalar[i], result
             );
             p3 += result;
+            info!(
+                "rawproof result of msm step {}: {:?}",
+                i,
+                p3.clone().into_affine()
+            );
         }
+
+        info!("rawproof result of msm: {:?}", p3.clone().into_affine());
+
         let p3 = p3.into_affine();
 
         let (p2, p1, p4) = (raw_proof.proof.c, raw_proof.vk.alpha_g1, raw_proof.proof.a);
@@ -64,6 +75,8 @@ impl From<RawProof> for ComputeCtx {
         let c_inv = c.inverse().unwrap();
         let result = f * (c_inv.pow(LAMBDA.to_u64_digits()));
 
+        assert_eq!(result.c1, Fq6::ZERO);
+
         if result.c1 != Fq6::ZERO {
             warn!(
                 "check the result of pairing: {:?}, proof is not correct",
@@ -80,6 +93,7 @@ impl From<RawProof> for ComputeCtx {
             proof: raw_proof,
             msm_points_from_pk: msm_gs,
             msm_scalars: msm_scalar,
+            vky0: vky0,
         }
     }
 }
@@ -102,16 +116,18 @@ pub fn msm_initial(window: usize) -> (ComputeFn, usize) {
 
         // precompute fr to bits
         let scalar_chunks = fq_to_bits(scalar.into_bigint(), window); // {a_0, ..,a_N}
-        info!(
-            "windows of mul table: {}",
-            (crate::bn254::fr::Fr::N_BITS as usize + window - 1) / window
+        debug!(
+            "windows of mul table: {}, chunks of scalar {}: {:?}",
+            (crate::bn254::fr::Fr::N_BITS as usize + window - 1) / window,
+            index,
+            scalar_chunks,
         );
 
         // doubled based + current windows' result
         let doubled_base = (base * Fr::from(1 << (chunk_index * window))).into_affine(); // (2^(w.i) P)
-        let window_result = (base * Fr::from(scalar_chunks[chunk_index])).into_affine();
+        let window_result = (doubled_base * Fr::from(scalar_chunks[chunk_index])).into_affine();
 
-        State::G1(Some((doubled_base + window_result).into_affine()))
+        State::G1(Some((compute_ctx.vky0 + window_result).into_affine()))
     };
 
     (Box::new(Arc::new(func)), 302955)
@@ -140,13 +156,19 @@ pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn,
 
         // precompute fr to bits
         let scalar_chunks = fq_to_bits(scalar.into_bigint(), window); // {a_0, ..,a_N}
+        debug!(
+            "windows of mul table: {}, chunks of scalar {}: {:?}",
+            (crate::bn254::fr::Fr::N_BITS as usize + window - 1) / window,
+            index,
+            scalar_chunks,
+        );
 
         // doubled based + current windows' result
         let doubled_base =
             (base * Fr::from(BigUint::one() << (chunk_index * window))).into_affine(); // (2^(w.i) P)
-        let window_result = (base * Fr::from(scalar_chunks[chunk_index])).into_affine();
+        let window_result = (doubled_base * Fr::from(scalar_chunks[chunk_index])).into_affine();
 
-        State::G1(Some((doubled_base + window_result + msm_acc).into_affine()))
+        State::G1(Some((window_result + msm_acc).into_affine()))
     };
 
     (Box::new(Arc::new(func)), 302955)
