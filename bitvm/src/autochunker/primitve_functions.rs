@@ -7,9 +7,9 @@ use crate::groth16::offchain_checker::compute_c_wi;
 use ark_bn254::{Fq, Fq6, Fr, G1Affine, G1Projective};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{AdditiveGroup, Field, One, PrimeField};
+use core::ops::Neg;
 use log::{debug, info, warn};
 use num_bigint::BigUint;
-use std::ops::Neg;
 use std::sync::Arc;
 
 pub type ComputeFn = Box<Arc<dyn Fn(ComputeCtx, Vec<State>) -> State + Send + Sync + 'static>>;
@@ -22,6 +22,7 @@ pub struct ComputeCtx {
     vky0: G1Affine,
     p2: G1Affine,
     p4: G1Affine,
+    c: Fq6,
 }
 
 impl From<RawProof> for ComputeCtx {
@@ -98,6 +99,7 @@ impl From<RawProof> for ComputeCtx {
             vky0: vky0,
             p2: p2,
             p4: p4,
+            c: c.c1 / c.c0,
         }
     }
 }
@@ -214,6 +216,7 @@ pub fn check_g1_point() -> (ComputeFn, usize) {
         assert_eq!(inputs.len(), 1);
         State::CheckValid(Some(true))
     };
+    // TODO: check valid of scalar from script
     (Box::new(Arc::new(func)), 0)
 }
 
@@ -240,12 +243,52 @@ pub fn extract_p4() -> ComputeFn {
     Box::new(Arc::new(func))
 }
 
+pub fn extract_c(idx: usize) -> ComputeFn {
+    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+        match idx {
+            0 => State::Fq2(Some(compute_ctx.c.c0)),
+            1 => State::Fq2(Some(compute_ctx.c.c1)),
+            2 => State::Fq2(Some(compute_ctx.c.c2)),
+            _ => panic!("index out of range"),
+        }
+    };
+    Box::new(Arc::new(func))
+}
+
+pub fn neg_fq2() -> (ComputeFn, usize) {
+    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 1);
+        let fq2 = inputs[0].get_fq2();
+        State::Fq2(Some(fq2.neg()))
+    };
+    (Box::new(Arc::new(func)), 0)
+}
+
 mod tests {
     use crate::autochunker::{primitve_functions::ComputeCtx, proof::RawProof};
+    use ark_bn254::{Fq, Fq2, Fq6};
+    use core::ops::Neg;
+    use log::info;
 
     #[test_log::test]
     fn test_raw_proof_to_compute_ctx() {
         let raw_proof = RawProof::mock_proof();
         let _: ComputeCtx = raw_proof.into();
+    }
+
+    #[test_log::test]
+    fn test_fq6_inverse() {
+        let now = std::time::Instant::now();
+        let c0 = Fq2::new(Fq::from(1), Fq::from(2));
+        let c1 = Fq2::new(Fq::from(3), Fq::from(4));
+        let c2 = Fq2::new(Fq::from(5), Fq::from(6));
+        let fq6 = Fq6::new(c0.clone(), c1.clone(), c2.clone());
+        let neg = fq6.neg();
+        info!("neg: {:?}", neg);
+        info!("c0, c1, c2: {:?}", (c0.neg(), c1.neg(), c2.neg()));
+        assert_eq!(c0.neg(), neg.c0);
+        assert_eq!(c1.neg(), neg.c1);
+        assert_eq!(c2.neg(), neg.c2);
+        info!("time elapsed: {:?}", now.elapsed());
     }
 }

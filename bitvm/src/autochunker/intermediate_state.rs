@@ -1,4 +1,4 @@
-use ark_bn254::{Fq, Fq2, Fr};
+use ark_bn254::{Fq, Fq2, Fq6, Fr};
 use ark_ec::models::bn::Bn;
 use ark_ec::pairing::Pairing;
 use paste::paste;
@@ -13,6 +13,7 @@ pub enum State {
     Fq(Option<Fq>),
     G1(Option<G1>),
     Fq2(Option<Fq2>),
+    Fq6(Option<Fq6>),
     CheckValid(Option<CheckValid>), // Use CheckValid for input verify or final accumulator verify
 }
 
@@ -103,5 +104,6 @@ impl_state_functions! {
     G1, 2, 13196;
     Fq2, 2, 13196;
     Fr, 1, 6788;
+    Fq6, 6, 123;
     CheckValid, 0, 0
 }

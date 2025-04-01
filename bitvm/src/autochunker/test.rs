@@ -138,6 +138,7 @@ fn main_test() {
     // chunk_precompute_p disprovable(true) script 340846 stack 654
     {
         let mut ctx = ctx.inner_context("Pairing");
+
         define_input!(ctx, p2, G1, extract_p2());
         define_script!(ctx, p2_check, CheckValid, [p2], check_g1_point());
         define_script!(ctx, _p2_tweak, G1, [p2], tweak_point());
@@ -145,12 +146,17 @@ fn main_test() {
         define_input!(ctx, p4, G1, extract_p4());
         define_script!(ctx, _p4_check, CheckValid, [p4], check_g1_point());
         define_script!(ctx, p4_tweak, G1, [p4], tweak_point());
+
+        // saying c = 1 + a J, c_inv will be 1 - a J, because c * c_inv = (1+a^2) + 0 J = 1
+        // so we can use neg(c) to represent the inverse of c
+        define_input!(ctx, c0, Fq2, extract_c(0));
+        define_input!(ctx, c1, Fq2, extract_c(1));
+        define_input!(ctx, c2, Fq2, extract_c(2));
+        define_script!(ctx, c_inv0, Fq6, [c0], neg_fq2());
+        define_script!(ctx, c_inv1, Fq6, [c1], neg_fq2());
+        define_script!(ctx, c_inv2, Fq6, [c2], neg_fq2());
     }
     /*
-    let p2_tweak = new_script(&mut graph, "p2_tweak".into(), 340846, vec![(&p2, G1_BYTES)]);
-
-    let p4 = new_input(&mut graph, "P4(alias proof.a)".into());
-    let p4_tweak = new_script(&mut graph, "p4_tweak".into(), 340846, vec![(&p4, G1_BYTES)]);
 
     let p3 = msm_acc;
     let p3_tweak = new_script(&mut graph, "p3_tweak".into(), 340301, vec![(&p3, G1_BYTES)]);
