@@ -88,7 +88,7 @@ pub fn get_assertion_from_segments(segments: &Vec<Segment>) -> Assertions {
 }
 
 // deserialize assertions to CompressedState (i.e. concrete types of bigint and hasbytes) and get proof
-fn utils_deserialize_assertions(
+pub fn utils_deserialize_assertions(
     asserts: Assertions,
 ) -> (
     [CompressedStateObject; NUM_PUBS],
@@ -128,60 +128,60 @@ fn utils_deserialize_assertions(
     cobjs
 }
 
+pub fn extract_proof_from_assertions(
+    state_pubs: [CompressedStateObject; NUM_PUBS],
+    state_fqs: [CompressedStateObject; NUM_U256],
+) -> Option<InputProofRaw> {
+    let mut ks: Vec<ark_ff::BigInt<4>> = vec![];
+    for i in 0..NUM_PUBS {
+        let cobj = &state_pubs[i];
+        if let CompressedStateObject::U256(cobj) = cobj {
+            ks.push(*cobj);
+        } else {
+            return None;
+        }
+    }
+    let ks: [ark_ff::BigInt<4>; NUM_PUBS] = ks.try_into().unwrap();
+
+    let mut numfqs: Vec<ark_ff::BigInt<4>> = vec![];
+    for i in 0..NUM_U256 {
+        let cobj = &state_fqs[i];
+        if let CompressedStateObject::U256(cobj) = cobj {
+            numfqs.push(*cobj);
+        } else {
+            return None;
+        }
+    }
+
+    let p4 = [numfqs[1], numfqs[0]];
+    let p2 = [numfqs[3], numfqs[2]];
+    let step = 4;
+    let c = [
+        numfqs[step],
+        numfqs[step + 1],
+        numfqs[step + 2],
+        numfqs[step + 3],
+        numfqs[step + 4],
+        numfqs[step + 5],
+    ];
+    let step = step + 6;
+
+    let q4 = [
+        numfqs[step],
+        numfqs[step + 1],
+        numfqs[step + 2],
+        numfqs[step + 3],
+    ];
+
+    let eval_ins: InputProofRaw = InputProofRaw { p2, p4, q4, c, ks };
+    Some(eval_ins)
+}
+
 // mirror of the funtion get_assertion_from_segments
 pub fn get_segments_from_assertion(
     assertions: Assertions,
     vk: ark_groth16::VerifyingKey<Bn254>,
 ) -> (bool, Vec<Segment>) {
-    fn extract_proof_from_assertions(
-        state_pubs: [CompressedStateObject; NUM_PUBS],
-        state_fqs: [CompressedStateObject; NUM_U256],
-    ) -> Option<InputProofRaw> {
-        let mut ks: Vec<ark_ff::BigInt<4>> = vec![];
-        for i in 0..NUM_PUBS {
-            let cobj = &state_pubs[i];
-            if let CompressedStateObject::U256(cobj) = cobj {
-                ks.push(*cobj);
-            } else {
-                return None;
-            }
-        }
-        let ks: [ark_ff::BigInt<4>; NUM_PUBS] = ks.try_into().unwrap();
-
-        let mut numfqs: Vec<ark_ff::BigInt<4>> = vec![];
-        for i in 0..NUM_U256 {
-            let cobj = &state_fqs[i];
-            if let CompressedStateObject::U256(cobj) = cobj {
-                numfqs.push(*cobj);
-            } else {
-                return None;
-            }
-        }
-
-        let p4 = [numfqs[1], numfqs[0]];
-        let p2 = [numfqs[3], numfqs[2]];
-        let step = 4;
-        let c = [
-            numfqs[step],
-            numfqs[step + 1],
-            numfqs[step + 2],
-            numfqs[step + 3],
-            numfqs[step + 4],
-            numfqs[step + 5],
-        ];
-        let step = step + 6;
-
-        let q4 = [
-            numfqs[step],
-            numfqs[step + 1],
-            numfqs[step + 2],
-            numfqs[step + 3],
-        ];
-
-        let eval_ins: InputProofRaw = InputProofRaw { p2, p4, q4, c, ks };
-        Some(eval_ins)
-    }
-
     fn extract_hashes_from_assertions(
         state_hashes: [CompressedStateObject; NUM_U160],
     ) -> Option<Vec<HashBytes>> {
