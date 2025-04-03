@@ -71,7 +71,7 @@ pub fn hinted_msm_with_constant_bases_affine(
 }
 
 pub const WINDOW_G1_MSM: u32 = 8;
-pub const BATCH_SIZE_PER_CHUNK: u32 = 8;
+pub const BATCH_SIZE_PER_CHUNK: u32 = 1;
 
 // Core function generates lookup table
 // A lookup table is a series of if-conditionals that take as input a w-bit scalar slice
@@ -437,6 +437,12 @@ mod test {
         let window = WINDOW_G1_MSM as usize;
         let mut prev = ark_bn254::G1Affine::identity();
         let all_rows = accumulate_addition_chain_for_a_scalar_mul(prev, q, fq, window);
+
+        for (row_out, row_scr, row_hints) in all_rows.iter() {
+            let tap_len = row_scr.len();
+            println!("tap_len: {}", tap_len);
+        }
+        println!("number of taps: {}", all_rows.len());
 
         let expected_msm = (q * fq).into_affine();
         let calculated_msm = all_rows[all_rows.len() - 1].0;

@@ -449,7 +449,7 @@ fn raw_input_proof_to_segments(
 
 #[cfg(test)]
 mod test {
-    use crate::bn254::ell_coeffs::AffinePairing;
+    use crate::{bn254::ell_coeffs::AffinePairing, chunk::api_compiletime_utils::ATE_LOOP_COUNT};
     use ark_bn254::Bn254;
     use ark_ec::{bn::BnConfig, pairing::Pairing, AffineRepr, CurveGroup};
     use ark_ff::{AdditiveGroup, Field};
@@ -1164,5 +1164,11 @@ mod test {
         // actual scripted verification
         verify_pairing(vec![p2, p3, p4], vec![q2, q3, q4], c, wi, fixed_p1q1);
         verify_pairing_scripted(vec![p2, p3, p4], vec![q2, q3, q4], c, wi, fixed_p1q1);
+    }
+
+    #[test]
+    fn test_whatever() {
+        let x = ATE_LOOP_COUNT.len();
+        println!("{}", x);
     }
 }

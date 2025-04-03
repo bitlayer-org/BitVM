@@ -17,6 +17,7 @@ use bitcoin::{
 };
 use bitcoin_scriptexec::{Exec, ExecCtx, ExecError, ExecStats, Options, Stack, TxTemplate};
 
+pub mod autochunker;
 pub mod bigint;
 pub mod bn254;
 pub mod chunk;

@@ -626,8 +626,8 @@ pub fn hinted_check_tangent_line_keep_elements(
     let mut hints = Vec::new();
 
     let (hinted_script3, hint3) = hinted_check_line_through_point(t.x, c3, c4);
-    let (hinted_script1, hint1) = Fq2::hinted_mul(2, t.y.double(), 0, c3);
-    let (hinted_script2, hint2) = Fq2::hinted_square(t.x);
+    let (hinted_script1, hint1) = Fq2::hinted_mul(2, t.y.double(), 0, c3); // 190871
+    let (hinted_script2, hint2) = Fq2::hinted_square(t.x); // 137000
 
     // [a, b, x, y]
     let scr = script!(

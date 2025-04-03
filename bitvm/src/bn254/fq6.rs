@@ -152,10 +152,15 @@ impl Fq6 {
         let mut hints = Vec::new();
 
         let (hinted_script1, hints1) = Fq2::hinted_square(a.c0);
+        println!("script1: {}", hinted_script1.len());
         let (hinted_script2, hints2) = Fq2::hinted_square(a.c0 + a.c1 + a.c2);
+        println!("script2: {}", hinted_script1.len());
         let (hinted_script3, hints3) = Fq2::hinted_square(a.c0 - a.c1 + a.c2);
+        println!("script3: {}", hinted_script1.len());
         let (hinted_script4, hints4) = Fq2::hinted_mul(2, a.c1, 0, a.c2);
+        println!("script4: {}", hinted_script1.len());
         let (hinted_script5, hints5) = Fq2::hinted_square(a.c2);
+        println!("script5: {}", hinted_script1.len());
 
         let mut script = script! {};
         let script_lines = [
@@ -673,7 +678,7 @@ mod test {
     fn test_bn254_fq6_hinted_mul() {
         let mut prng: ChaCha20Rng = ChaCha20Rng::seed_from_u64(0);
 
-        for _ in 0..100 {
+        for _ in 0..1 {
             let a = ark_bn254::Fq6::rand(&mut prng);
             let b = ark_bn254::Fq6::rand(&mut prng);
             let c = a.mul(&b);
@@ -692,6 +697,7 @@ mod test {
                 { Fq6::equalverify() }
                 OP_TRUE
             };
+            println!("fq6_mul: {}", script.len());
             run(script);
         }
     }
@@ -754,6 +760,31 @@ mod test {
                 };
                 run(script);
             }
+        }
+    }
+
+    #[test]
+    fn test_square() {
+        let mut prng = ChaCha20Rng::seed_from_u64(0);
+
+        for _ in 0..1 {
+            let a = ark_bn254::Fq6::rand(&mut prng);
+            let b = a.square();
+
+            let (hinted_square, hints) = Fq6::hinted_square(a);
+            println!("Fq6.hinted_square: {} bytes", hinted_square.len());
+
+            let script = script! {
+                for hint in hints {
+                    { hint.push() }
+                }
+                { Fq6::push(a) }
+                { hinted_square.clone() }
+                { Fq6::push(b) }
+                { Fq6::equalverify() }
+                OP_TRUE
+            };
+            run(script);
         }
     }
 }

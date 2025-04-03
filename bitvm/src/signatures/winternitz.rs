@@ -498,9 +498,14 @@ impl Converter for ToBytesConverter {
 #[cfg(test)]
 mod test {
     use super::*;
+    use core::num;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
-    use std::sync::{LazyLock, Mutex};
+    use serde_json::Number;
+    use std::{
+        any::Any,
+        sync::{LazyLock, Mutex},
+    };
     static MALICIOUS_RNG: LazyLock<Mutex<ChaCha20Rng>> =
         LazyLock::new(|| Mutex::new(ChaCha20Rng::seed_from_u64(337)));
 
@@ -739,6 +744,79 @@ mod test {
                 [BruteforceVerifier, VoidConverter],
                 [BinarysearchVerifier, VoidConverter]
             );
+        }
+    }
+
+    #[test]
+    fn test_script_length() {
+        let secret_key = match hex::decode(SAMPLE_SECRET_KEY) {
+            Ok(bytes) => bytes,
+            Err(_) => panic!("Invalid hex string"),
+        };
+        let multiplicator = 4 * 9 * 8;
+        for number_of_fq in [1, 2, 3, 4, 5, 6] {
+            for block_length in [4, 8] {
+                let number_of_bits = number_of_fq * multiplicator;
+                {
+                    let o = Winternitz::<ListpickVerifier, VoidConverter>::new();
+                    let ps = Parameters::new_by_bit_length(number_of_bits as u32, block_length);
+                    let public_key = generate_public_key(&ps, &secret_key);
+                    let standard_script = script! {
+                        { o.sign(&ps, &secret_key, &vec![0; number_of_bits/8]) }
+                        { o.checksig_verify(&ps, &public_key) }
+                    };
+                    let res = execute_script(standard_script.clone());
+                    println!(
+                        "number of fq: {}, For message_length:{} and block_length:{}  {:?} => {}, {}",
+                        number_of_fq,
+                        ps.message_length,
+                        ps.block_length,
+                        get_type_name::<ListpickVerifier>(),
+                        standard_script.len(),
+                        res.stats.max_nb_stack_items,
+                    );
+                }
+
+                {
+                    let o = Winternitz::<BruteforceVerifier, VoidConverter>::new();
+                    let ps = Parameters::new_by_bit_length(number_of_bits as u32, block_length);
+                    let public_key = generate_public_key(&ps, &secret_key);
+                    let standard_script = script! {
+                        { o.sign(&ps, &secret_key, &vec![0; number_of_bits/8]) }
+                        { o.checksig_verify(&ps, &public_key) }
+                    };
+                    let res = execute_script(standard_script.clone());
+                    println!(
+                        "number of fq: {}, For message_length:{} and block_length:{}  {:?} => {}, {}",
+                        number_of_fq,
+                        ps.message_length,
+                        ps.block_length,
+                        get_type_name::<BruteforceVerifier>(),
+                        standard_script.len(),
+                        res.stats.max_nb_stack_items,
+                    );
+                }
+
+                {
+                    let o = Winternitz::<BinarysearchVerifier, VoidConverter>::new();
+                    let ps = Parameters::new_by_bit_length(number_of_bits as u32, block_length);
+                    let public_key = generate_public_key(&ps, &secret_key);
+                    let standard_script = script! {
+                        { o.sign(&ps, &secret_key, &vec![0; number_of_bits/8]) }
+                        { o.checksig_verify(&ps, &public_key) }
+                    };
+                    let res = execute_script(standard_script.clone());
+                    println!(
+                        "number of fq: {}, For message_length:{} and block_length:{}  {:?} => {}, {}",
+                        number_of_fq,
+                        ps.message_length,
+                        ps.block_length,
+                        get_type_name::<BinarysearchVerifier>(),
+                        standard_script.len(),
+                        res.stats.max_nb_stack_items,
+                    );
+                }
+            }
         }
     }
 }

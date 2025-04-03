@@ -58,6 +58,10 @@ tqdm = "0.7"
 secp256k1 = { version = "0.29.1", features = ["global-context"]}
 derive_more = "2.0"
 
+graphrs = "0.11.12"
+log = "0.4.26"
+test-log = "0.2.17"
+
 [profile.dev]
 opt-level = 3
 

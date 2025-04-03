@@ -31,6 +31,9 @@ ark-crypto-primitives.workspace = true
 ark-relations.workspace = true
 tqdm.workspace = true
 regex.workspace = true
+graphrs.workspace = true
+log.workspace = true
+test-log.workspace = true
 
 [features]
 fuzzing = []

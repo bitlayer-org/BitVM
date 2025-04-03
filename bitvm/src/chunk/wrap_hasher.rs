@@ -65,6 +65,13 @@ pub(crate) mod hash_utils {
         }
     }
 
+    #[test]
+    fn test_fp6() {
+        println!("hash fp 6 len: {}", hash_fp6().len());
+        println!("hash fp 4 len: {}", hash_fp4().len());
+        println!("hash fp 2 len: {}", hash_fp2().len());
+    }
+
     /// Compute hash of top six field elements on stack: [a00, a01, a10, a11, a20, a21]
     /// Output is {BLAKE3_HASH_LENGTH} byte output represented in limb-form
     pub(crate) fn hash_fp6() -> Script {

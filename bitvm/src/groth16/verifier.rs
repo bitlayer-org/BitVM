@@ -9,10 +9,10 @@ use crate::bn254::pairing::Pairing;
 use crate::bn254::utils::Hint;
 use crate::groth16::offchain_checker::compute_c_wi;
 use crate::treepp::{script, Script};
-use ark_bn254::{Bn254, G1Projective};
+use ark_bn254::{Bn254, Fq6, G1Projective};
 use ark_ec::pairing::Pairing as ark_Pairing;
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::Field;
+use ark_ff::{AdditiveGroup, Field};
 use ark_groth16::{Proof, VerifyingKey};
 use core::ops::Neg;
 

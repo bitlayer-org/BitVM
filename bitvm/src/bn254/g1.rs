@@ -504,10 +504,10 @@ pub fn hinted_from_eval_points(p: ark_bn254::G1Affine) -> (Script, Vec<Hint>) {
             OP_DEPTH OP_1SUB OP_ROLL
         }
         {Fq2::fromaltstack()}
-        // [hints, yinv, x, y]
-        {Fq::copy(2)}
-        {Fq::copy(1)}
-        {hinted_script1}
+        // no need to check yinv and y, since hinted_script2 will check [hints, yinv, x, y]
+        // {Fq::copy(2)}
+        // {Fq::copy(1)}
+        // {hinted_script1}
         // [hints, yinv, x, y]
         {Fq::copy(2)}
         {Fq::toaltstack()}

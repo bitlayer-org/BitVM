@@ -33,7 +33,11 @@ pub(crate) fn chunk_msm(
         ks = input_ks.clone();
     }
 
-    let chunks = msm::g1_multi_scalar_mul(qs.clone(), ks.into_iter().map(|f| f.into()).collect());
+    let chunks: Vec<(
+        ark_ec::short_weierstrass::Affine<ark_bn254::g1::Config>,
+        Script,
+        Vec<Hint>,
+    )> = msm::g1_multi_scalar_mul(qs.clone(), ks.into_iter().map(|f| f.into()).collect());
 
     // [G1AccDashHash, G1AccHash, k0, k1, k2]
     // [hints, G1Acc]
