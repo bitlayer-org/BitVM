@@ -19,7 +19,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
             Box::new(|_: ComputeCtx, inputs: Vec<State>| -> State {
                 assert!(inputs.len() == 1);
                 let a0 = inputs[0].get_fq2();
-                let s0 = a0.sqrt().unwrap();
+                let s0 = a0.square();
                 State::Fq2(Some(s0))
             }),
             137000
@@ -38,7 +38,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
                 let a0 = inputs[0].get_fq2();
                 let a1 = inputs[1].get_fq2();
                 let a2 = inputs[2].get_fq2();
-                let s1 = (a0 + a1 + a2).sqrt().unwrap();
+                let s1 = (a0 + a1 + a2).square();
                 State::Fq2(Some(s1))
             }),
             137000
@@ -57,7 +57,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
                 let a0 = inputs[0].get_fq2();
                 let a1 = inputs[1].get_fq2();
                 let a2 = inputs[2].get_fq2();
-                let s2 = (a0 - a1 + a2).sqrt().unwrap();
+                let s2 = (a0 - a1 + a2).square();
                 State::Fq2(Some(s2))
             }),
             137000
@@ -92,7 +92,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
             Box::new(|_: ComputeCtx, inputs: Vec<State>| {
                 assert!(inputs.len() == 1);
                 let a2 = inputs[0].get_fq2();
-                let s4 = a2.sqrt().unwrap();
+                let s4 = a2.square();
                 State::Fq2(Some(s4))
             }),
             137000
@@ -174,13 +174,53 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
         )
     );
 
-    [a0.clone(), a1.clone(), a2.clone()]
+    [c0.clone(), c1.clone(), c2.clone()]
 }
 
 #[cfg(test)]
 mod tests {
-    #[test]
+    use crate::autochunker::computation_graph::{compute_states, new_input, GraphContext};
+    use crate::autochunker::functions::new_square_fq6;
+    use crate::autochunker::intermediate_state::State;
+    use crate::autochunker::primitve_functions::ComputeCtx;
+    use crate::autochunker::proof::RawProof;
+    use crate::{define_input, define_overide_script, define_script};
+    use ark_bn254::{Fq2, Fq6};
+    use ark_ff::Field;
+    use log::info;
+
+    #[test_log::test]
     fn test_square_fq6() {
-        todo!()
+        let mut ctx = GraphContext::new("test");
+        define_input!(
+            ctx,
+            a0,
+            Fq2,
+            Box::new(|_: ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
+        );
+        define_input!(
+            ctx,
+            a1,
+            Fq2,
+            Box::new(|_: ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
+        );
+        define_input!(
+            ctx,
+            a2,
+            Fq2,
+            Box::new(|_: ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
+        );
+
+        let [c0, c1, c2] = new_square_fq6(&mut ctx, [&a0, &a1, &a2]);
+        compute_states(&ctx, RawProof::mock_proof().into());
+        let lock_guard = ctx.graph.lock().unwrap();
+        for (idx, node) in vec![c0, c1, c2].into_iter().enumerate() {
+            let node = lock_guard.get_node(node.name.clone()).unwrap();
+            info!("c{}: {:?}", idx, node.attributes.clone().unwrap().state);
+        }
+
+        let a = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
+        let c = a.square();
+        println!("c: {:?}", c);
     }
 }

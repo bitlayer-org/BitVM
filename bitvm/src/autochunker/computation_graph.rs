@@ -15,7 +15,7 @@ macro_rules! define_input {
     ($context:ident, $name:tt, $state_type:ident, $func:expr) => {
         paste::paste! {
             let state = State::[<new_ $state_type:lower>]();
-            let var_name = $context.variable_prefix.clone() + &stringify!($name).to_owned();
+            let var_name = $context.variable_prefix.clone() + "_" + &stringify!($name).to_owned();
             let $name = new_input(&mut $context.graph, var_name, state, $func);
         }
     };
