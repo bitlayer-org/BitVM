@@ -214,13 +214,17 @@ mod tests {
         let [c0, c1, c2] = new_square_fq6(&mut ctx, [&a0, &a1, &a2]);
         compute_states(&ctx, RawProof::mock_proof().into());
         let lock_guard = ctx.graph.lock().unwrap();
-        for (idx, node) in vec![c0, c1, c2].into_iter().enumerate() {
-            let node = lock_guard.get_node(node.name.clone()).unwrap();
-            info!("c{}: {:?}", idx, node.attributes.clone().unwrap().state);
-        }
-
         let a = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
         let c = a.square();
-        println!("c: {:?}", c);
+        for (idx, (node, cx)) in vec![c0, c1, c2]
+            .into_iter()
+            .zip(vec![c.c0, c.c1, c.c2].into_iter())
+            .enumerate()
+        {
+            let node = lock_guard.get_node(node.name.clone()).unwrap();
+            let value = node.attributes.clone().unwrap().state.get_fq2();
+            info!("c{}: {:?}", idx, value);
+            assert_eq!(value, cx);
+        }
     }
 }

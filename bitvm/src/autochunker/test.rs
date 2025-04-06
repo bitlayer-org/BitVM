@@ -1,4 +1,5 @@
 use crate::autochunker::computation_graph::*;
+use crate::autochunker::functions::new_square_fq6;
 use crate::{define_input, define_overide_script, define_script};
 use std::time;
 // use utils::*;
@@ -107,10 +108,11 @@ fn main_test() {
         define_script!(ctx, c_inv1, Fq6, [c1], neg_fq2());
         define_script!(ctx, c_inv2, Fq6, [c2], neg_fq2());
 
-        let (f0, f1, f2) = (c_inv0, c_inv1, c_inv2);
+        let (mut f0, mut f1, mut f2) = (c_inv0, c_inv1, c_inv2);
         for i in 1..65 {
-            let mut ctx = ctx.inner_context(&format!("square_f_loop_{}", i));
+            let mut ctx = ctx.inner_context(&format!("ate_loop_{}", i));
             // square f
+            [f0, f1, f2] = new_square_fq6(&mut ctx.inner_context("square_f"), [&f0, &f1, &f2]);
             // define_script!(ctx, f0, Fq6, [f0], square_fq6());
         }
     }
