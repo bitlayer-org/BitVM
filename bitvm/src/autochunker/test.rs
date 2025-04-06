@@ -1,6 +1,6 @@
-use std::time;
-
 use crate::autochunker::computation_graph::*;
+use crate::{define_input, define_overide_script, define_script};
+use std::time;
 // use utils::*;
 use crate::autochunker::intermediate_state::*;
 use crate::autochunker::primitve_functions::*;
@@ -8,59 +8,6 @@ use crate::autochunker::proof::*;
 
 use log::info;
 use paste::paste;
-
-// Define the `define_script` macro
-macro_rules! define_input {
-    ($context:ident, $name:tt, $state_type:ident, $func:expr) => {
-        paste! {
-            let state = State::[<new_ $state_type:lower>]();
-            let var_name = $context.variable_prefix.clone() + &stringify!($name).to_owned();
-            let $name = new_input(&mut $context.graph, var_name, state, $func);
-        }
-    };
-}
-
-macro_rules! define_script {
-    // name hasn't been defined
-    ($context: ident, $name: ident, $state_type:ident, [$($input:ident),*], $func:expr) => {
-        let (function, script_size) = $func;
-        let var_name = $context.variable_prefix.clone() + "_" + &stringify!($name).to_owned();
-        let mut inputs = vec![];
-        $(inputs.push($input.clone());)*
-        paste!{
-            let state = State::[<new_ $state_type:lower>]();
-            let $name = new_script(
-                &mut $context.graph,
-                var_name,
-                script_size,
-                function,
-                state,
-                inputs,
-            );
-        }
-    };
-}
-
-macro_rules! define_overide_script {
-    // name has been defined and override
-    ($context: ident, $name: ident, $state_type:ident, [$($input:ident),*], $func:expr) => {
-        let (function, script_size) = $func;
-        let var_name = $context.variable_prefix.clone() + "_" + &stringify!($name).to_owned();
-        let mut inputs = vec![];
-        $(inputs.push($input.clone());)*
-        paste!{
-            let state = State::[<new_ $state_type:lower>]();
-            $name = new_script(
-                &mut $context.graph,
-                var_name,
-                script_size,
-                function,
-                state,
-                inputs,
-            );
-        }
-    };
-}
 
 #[test_log::test]
 fn main_test() {
@@ -77,7 +24,7 @@ fn main_test() {
 
     // =========================================================================================================
     let ctx = GraphContext::new("groth16_verifier");
-    {
+    let p3 = {
         let mut ctx = ctx.inner_context("MSM");
 
         // Phase 1: multiple scalar multiplication
@@ -127,7 +74,9 @@ fn main_test() {
                 );
             }
         }
-    }
+
+        msm_acc
+    };
 
     // =========================================================================================================
 
@@ -147,6 +96,8 @@ fn main_test() {
         define_script!(ctx, _p4_check, CheckValid, [p4], check_g1_point());
         define_script!(ctx, p4_tweak, G1, [p4], tweak_point());
 
+        define_script!(ctx, p3_tweak, G1, [p3], tweak_point());
+
         // saying c = 1 + a J, c_inv will be 1 - a J, because c * c_inv = (1+a^2) + 0 J = 1
         // so we can use neg(c) to represent the inverse of c
         define_input!(ctx, c0, Fq2, extract_c(0));
@@ -155,6 +106,13 @@ fn main_test() {
         define_script!(ctx, c_inv0, Fq6, [c0], neg_fq2());
         define_script!(ctx, c_inv1, Fq6, [c1], neg_fq2());
         define_script!(ctx, c_inv2, Fq6, [c2], neg_fq2());
+
+        let (f0, f1, f2) = (c_inv0, c_inv1, c_inv2);
+        for i in 1..65 {
+            let mut ctx = ctx.inner_context(&format!("square_f_loop_{}", i));
+            // square f
+            // define_script!(ctx, f0, Fq6, [f0], square_fq6());
+        }
     }
     /*
 

@@ -9,6 +9,63 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use tqdm::refresh;
 
+// Define the `define_script` macro
+#[macro_export]
+macro_rules! define_input {
+    ($context:ident, $name:tt, $state_type:ident, $func:expr) => {
+        paste::paste! {
+            let state = State::[<new_ $state_type:lower>]();
+            let var_name = $context.variable_prefix.clone() + &stringify!($name).to_owned();
+            let $name = new_input(&mut $context.graph, var_name, state, $func);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! define_script {
+    // name hasn't been defined
+    ($context: ident, $name: ident, $state_type:ident, [$($input:ident),*], $func:expr) => {
+        let function = $func.0;
+        let script_size = $func.1;
+        let var_name = $context.variable_prefix.clone() + "_" + &stringify!($name).to_owned();
+        let mut inputs = vec![];
+        $(inputs.push($input.clone());)*
+        paste::paste!{
+            let state = State::[<new_ $state_type:lower>]();
+            let $name = new_script(
+                &mut $context.graph,
+                var_name,
+                script_size,
+                function,
+                state,
+                inputs,
+            );
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! define_overide_script {
+    // name has been defined and override
+    ($context: ident, $name: ident, $state_type:ident, [$($input:ident),*], $func:expr) => {
+        let (function, script_size) = $func;
+        let var_name = $context.variable_prefix.clone() + "_" + &stringify!($name).to_owned();
+        let mut inputs = vec![];
+        $(inputs.push($input.clone());)*
+        paste::paste!{
+            let state = State::[<new_ $state_type:lower>]();
+            $name = new_script(
+                &mut $context.graph,
+                var_name,
+                script_size,
+                function,
+                state,
+                inputs,
+            );
+        }
+    };
+}
+
 #[derive(Clone)]
 pub struct NodeInfo {
     // other information about graph, such as script, witness, template, etc.
@@ -16,7 +73,7 @@ pub struct NodeInfo {
     pub script_size: usize,
     pub state: State,
     #[allow(unused)]
-    pub function: ComputeFn,
+    pub function: Arc<ComputeFn>,
     pub predecessor: Vec<String>,
 }
 
@@ -66,7 +123,7 @@ pub fn new_input(
     let node_info = NodeInfo {
         script_size: 0,
         state: state.clone(),
-        function: compute_fn,
+        function: Arc::new(compute_fn),
         predecessor: vec![],
     };
     let node = BitVMNode::new_node(name, node_info);
@@ -86,7 +143,7 @@ pub fn new_script<'a>(
     let node_info = NodeInfo {
         script_size,
         state: state.clone(),
-        function: compute_fn,
+        function: Arc::new(compute_fn),
         predecessor,
     };
     let node = BitVMNode::new_node(name.clone(), node_info);

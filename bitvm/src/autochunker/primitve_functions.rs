@@ -12,7 +12,7 @@ use log::{debug, info, warn};
 use num_bigint::BigUint;
 use std::sync::Arc;
 
-pub type ComputeFn = Box<Arc<dyn Fn(ComputeCtx, Vec<State>) -> State + Send + Sync + 'static>>;
+pub type ComputeFn = Box<dyn Fn(ComputeCtx, Vec<State>) -> State>;
 
 #[derive(Debug, Clone)]
 pub struct ComputeCtx {
@@ -136,7 +136,7 @@ pub fn msm_initial(window: usize) -> (ComputeFn, usize) {
         State::G1(Some((compute_ctx.vky0 + window_result).into_affine()))
     };
 
-    (Box::new(Arc::new(func)), 302955)
+    (Box::new(func), 302955)
 }
 
 pub fn windows_of_mul_table(window: usize) -> usize {
@@ -177,7 +177,7 @@ pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn,
         State::G1(Some((window_result + msm_acc).into_affine()))
     };
 
-    (Box::new(Arc::new(func)), 302955)
+    (Box::new(func), 302955)
 }
 
 pub fn extract_scalar(index: usize) -> ComputeFn {
@@ -190,7 +190,7 @@ pub fn extract_scalar(index: usize) -> ComputeFn {
                 .clone(),
         ))
     };
-    Box::new(Arc::new(func))
+    Box::new(func)
 }
 
 pub fn scalar_valid() -> (ComputeFn, usize) {
@@ -199,7 +199,7 @@ pub fn scalar_valid() -> (ComputeFn, usize) {
         State::CheckValid(Some(true))
     };
     // TODO: check valid of scalar from script
-    (Box::new(Arc::new(func)), 0)
+    (Box::new(func), 0)
 }
 
 // extract proof.c
@@ -207,7 +207,7 @@ pub fn extract_p2() -> ComputeFn {
     let func = move |compute_ctx: ComputeCtx, _inputs: Vec<State>| -> State {
         State::G1(Some(compute_ctx.p2.clone()))
     };
-    Box::new(Arc::new(func))
+    Box::new(func)
 }
 
 // check validation of a G1 point
@@ -217,7 +217,7 @@ pub fn check_g1_point() -> (ComputeFn, usize) {
         State::CheckValid(Some(true))
     };
     // TODO: check valid of scalar from script
-    (Box::new(Arc::new(func)), 0)
+    (Box::new(func), 0)
 }
 
 // for the optimization of line evaluation
@@ -232,7 +232,7 @@ pub fn tweak_point() -> (ComputeFn, usize) {
         };
         State::G1(Some(compute_ctx.p2.clone()))
     };
-    (Box::new(Arc::new(func)), 0)
+    (Box::new(func), 0)
 }
 
 // extrac proof.a
@@ -240,7 +240,7 @@ pub fn extract_p4() -> ComputeFn {
     let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
         State::G1(Some(compute_ctx.p4.clone()))
     };
-    Box::new(Arc::new(func))
+    Box::new(func)
 }
 
 pub fn extract_c(idx: usize) -> ComputeFn {
@@ -252,7 +252,7 @@ pub fn extract_c(idx: usize) -> ComputeFn {
             _ => panic!("index out of range"),
         }
     };
-    Box::new(Arc::new(func))
+    Box::new(func)
 }
 
 pub fn neg_fq2() -> (ComputeFn, usize) {
@@ -261,7 +261,7 @@ pub fn neg_fq2() -> (ComputeFn, usize) {
         let fq2 = inputs[0].get_fq2();
         State::Fq2(Some(fq2.neg()))
     };
-    (Box::new(Arc::new(func)), 0)
+    (Box::new(func), 0)
 }
 
 mod tests {
