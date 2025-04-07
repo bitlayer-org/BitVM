@@ -4,7 +4,7 @@ use crate::bn254::fp254impl::Fp254Impl;
 use crate::bn254::utils::fq_to_bits;
 use crate::groth16::constants::LAMBDA;
 use crate::groth16::offchain_checker::compute_c_wi;
-use ark_bn254::{Fq, Fq6, Fr, G1Affine, G1Projective};
+use ark_bn254::{Fq, Fq6, Fr, G1Affine, G1Projective, G2Affine};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{AdditiveGroup, Field, One, PrimeField};
 use core::ops::Neg;
@@ -12,17 +12,18 @@ use log::{debug, info, warn};
 use num_bigint::BigUint;
 use std::sync::Arc;
 
-pub type ComputeFn = Box<dyn Fn(ComputeCtx, Vec<State>) -> State>;
+pub type ComputeFn = Box<dyn Fn(&mut ComputeCtx, Vec<State>) -> State>;
 
 #[derive(Debug, Clone)]
 pub struct ComputeCtx {
-    proof: RawProof,
-    msm_points_from_pk: Vec<G1Affine>,
-    msm_scalars: Vec<Fr>,
-    vky0: G1Affine,
-    p2: G1Affine,
-    p4: G1Affine,
-    c: Fq6,
+    pub proof: RawProof,
+    pub msm_points_from_pk: Vec<G1Affine>,
+    pub msm_scalars: Vec<Fr>,
+    pub vky0: G1Affine,
+    pub p2: G1Affine,
+    pub p4: G1Affine,
+    pub t4: G2Affine,
+    pub c: Fq6,
 }
 
 impl From<RawProof> for ComputeCtx {
@@ -100,6 +101,7 @@ impl From<RawProof> for ComputeCtx {
             p2: p2,
             p4: p4,
             c: c.c1 / c.c0,
+            t4: q4,
         }
     }
 }
@@ -109,7 +111,7 @@ pub fn msm_initial(window: usize) -> (ComputeFn, usize) {
     // the first step of msm
     let (index, chunk_index) = (0, 0);
 
-    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert!(inputs.len() == 1);
 
         // get the scalar and base
@@ -146,7 +148,7 @@ pub fn windows_of_mul_table(window: usize) -> usize {
 }
 
 pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn, usize) {
-    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert!(inputs.len() == 2);
 
         // get the accumulator of msm
@@ -181,7 +183,7 @@ pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn,
 }
 
 pub fn extract_scalar(index: usize) -> ComputeFn {
-    let func = move |compute_ctx: ComputeCtx, _inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
         State::Fr(Some(
             compute_ctx
                 .msm_scalars
@@ -194,7 +196,7 @@ pub fn extract_scalar(index: usize) -> ComputeFn {
 }
 
 pub fn scalar_valid() -> (ComputeFn, usize) {
-    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         State::CheckValid(Some(true))
     };
@@ -204,7 +206,7 @@ pub fn scalar_valid() -> (ComputeFn, usize) {
 
 // extract proof.c
 pub fn extract_p2() -> ComputeFn {
-    let func = move |compute_ctx: ComputeCtx, _inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
         State::G1(Some(compute_ctx.p2.clone()))
     };
     Box::new(func)
@@ -212,7 +214,7 @@ pub fn extract_p2() -> ComputeFn {
 
 // check validation of a G1 point
 pub fn check_g1_point() -> (ComputeFn, usize) {
-    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         State::CheckValid(Some(true))
     };
@@ -222,7 +224,7 @@ pub fn check_g1_point() -> (ComputeFn, usize) {
 
 // for the optimization of line evaluation
 pub fn tweak_point() -> (ComputeFn, usize) {
-    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let point = inputs[0].get_g1();
         let tweak_point = G1 {
@@ -237,14 +239,14 @@ pub fn tweak_point() -> (ComputeFn, usize) {
 
 // extrac proof.a
 pub fn extract_p4() -> ComputeFn {
-    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         State::G1(Some(compute_ctx.p4.clone()))
     };
     Box::new(func)
 }
 
 pub fn extract_c(idx: usize) -> ComputeFn {
-    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         match idx {
             0 => State::Fq2(Some(compute_ctx.c.c0)),
             1 => State::Fq2(Some(compute_ctx.c.c1)),
@@ -255,8 +257,22 @@ pub fn extract_c(idx: usize) -> ComputeFn {
     Box::new(func)
 }
 
+pub fn extract_t4x() -> ComputeFn {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        State::Fq2(Some(compute_ctx.t4.x().unwrap()))
+    };
+    Box::new(func)
+}
+
+pub fn extract_t4y() -> ComputeFn {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        State::Fq2(Some(compute_ctx.t4.y().unwrap()))
+    };
+    Box::new(func)
+}
+
 pub fn neg_fq2() -> (ComputeFn, usize) {
-    let func = move |compute_ctx: ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let fq2 = inputs[0].get_fq2();
         State::Fq2(Some(fq2.neg()))

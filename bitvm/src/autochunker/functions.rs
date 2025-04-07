@@ -3,6 +3,7 @@ use std::sync::Arc;
 use super::{computation_graph::*, intermediate_state::*, primitve_functions::*};
 use crate::{define_input, define_overide_script, define_script};
 use ark_bn254::{Fq2, Fq6, Fq6Config};
+use ark_ec::AffineRepr;
 use ark_ff::{Field, Fp6Config};
 
 /// three input each which is fq2
@@ -16,7 +17,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
         Fq2,
         [a0],
         (
-            Box::new(|_: ComputeCtx, inputs: Vec<State>| -> State {
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| -> State {
                 assert!(inputs.len() == 1);
                 let a0 = inputs[0].get_fq2();
                 let s0 = a0.square();
@@ -33,7 +34,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
         Fq2,
         [a0, a1, a2],
         (
-            Box::new(|_: ComputeCtx, inputs: Vec<State>| {
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
                 assert!(inputs.len() == 3);
                 let a0 = inputs[0].get_fq2();
                 let a1 = inputs[1].get_fq2();
@@ -52,7 +53,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
         Fq2,
         [a0, a1, a2],
         (
-            Box::new(|_: ComputeCtx, inputs: Vec<State>| {
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
                 assert!(inputs.len() == 3);
                 let a0 = inputs[0].get_fq2();
                 let a1 = inputs[1].get_fq2();
@@ -71,7 +72,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
         Fq2,
         [a1, a2],
         (
-            Box::new(|_: ComputeCtx, inputs: Vec<State>| {
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
                 assert!(inputs.len() == 2);
                 let a1 = inputs[0].get_fq2();
                 let a2 = inputs[1].get_fq2();
@@ -89,7 +90,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
         Fq2,
         [a2],
         (
-            Box::new(|_: ComputeCtx, inputs: Vec<State>| {
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
                 assert!(inputs.len() == 1);
                 let a2 = inputs[0].get_fq2();
                 let s4 = a2.square();
@@ -106,7 +107,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
         Fq2,
         [s1, s2],
         (
-            Box::new(|_: ComputeCtx, inputs: Vec<State>| {
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
                 assert!(inputs.len() == 2);
                 let s1 = inputs[0].get_fq2();
                 let s2 = inputs[1].get_fq2();
@@ -124,7 +125,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
         Fq2,
         [s0, s3],
         (
-            Box::new(|_: ComputeCtx, inputs: Vec<State>| {
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
                 assert!(inputs.len() == 2);
                 let s0 = inputs[0].get_fq2();
                 let s3 = inputs[1].get_fq2();
@@ -142,7 +143,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
         Fq2,
         [s1, s3, t4, s4],
         (
-            Box::new(|_: ComputeCtx, inputs: Vec<State>| {
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
                 assert!(inputs.len() == 4);
                 let s1 = inputs[0].get_fq2();
                 let s3 = inputs[1].get_fq2();
@@ -162,7 +163,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
         Fq2,
         [t4, s0, s4],
         (
-            Box::new(|_: ComputeCtx, inputs: Vec<State>| {
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
                 assert!(inputs.len() == 3);
                 let t4 = inputs[0].get_fq2();
                 let s0 = inputs[1].get_fq2();
@@ -175,6 +176,40 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
     );
 
     [c0.clone(), c1.clone(), c2.clone()]
+}
+
+// the BN254 curve is represented by Y^2 = X^3 + aX + b, where b = 3 and a = 0
+// For D-type twist (BN254), y^2 = x^3 + b / w^6
+// mapping from BN254 to twisted-BN254: x -> x / w and y -> y / w^3
+// mapping from wisted-BN254 to BN254: x -> x \cdot w^2 and y -> y \cdot w^3
+//
+// for a point (x_0, y_0) in twisted-BN254, (x_0 w^2, y_0 w^3) the tangent line is y = \lambda x + v
+// first define the tagent line: y = \lambda x + v
+// (1) \lambda = (3(x_0 w^2)^2) / 2(y_0 w^3) = (3x_0^2)/2y_0 \cdot w
+// (2) v = y_0 w^3 - \lambda x_0 w^2 = y_0 -  ((3x_0^2)/2y_0) x_0 \cdot w^3
+// where \lambda is the slop and v is bias
+//
+// use \lambda = \lambda / w, v = v / w^3 to represent the Fq2 parts of coefficients.
+//
+// since w^6 = u+9, the evaluation on G1 point (x_p, y_p) would be
+// (y_p - \lambda x_p - v) = 1 / y_p \cdot (1 + \lambda x_p' + (-v) y_p')
+// because 1 / y_p is F_p element, can be elimnated by the multiplication
+//                         = 1 + \lambda x_p' + (-v) y_p' = F_{q^6}(1) + (F_{a^6}(\lamdba + (-v)y_p' \cdot w^2)) \cdot w
+pub fn double_by_tagent_line(ctx: &mut GraphContext, t4x: &BitVMNode, t4y: &BitVMNode) {
+    define_input!(
+        ctx,
+        lambda,
+        Fq2,
+        Box::new(|ctx: &mut ComputeCtx, _: Vec<State>| {
+            assert!(ctx.t4.xy().is_some());
+            let (t4x, t4y) = ctx.t4.xy().unwrap();
+            let lambda = (Fq2::from(3) * t4x.square()) / (Fq2::from(2) * t4y);
+            State::Fq2(Some(lambda))
+        })
+    );
+
+    let lambda = new_input(&mut graph, format!("t4_lambda_in_loop_{}", i));
+    let v = new_input(&mut graph, format!("t4_v_in_loop_{}", i));
 }
 
 #[cfg(test)]
@@ -196,23 +231,24 @@ mod tests {
             ctx,
             a0,
             Fq2,
-            Box::new(|_: ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
+            Box::new(|_: &mut ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
         );
         define_input!(
             ctx,
             a1,
             Fq2,
-            Box::new(|_: ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
+            Box::new(|_: &mut ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
         );
         define_input!(
             ctx,
             a2,
             Fq2,
-            Box::new(|_: ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
+            Box::new(|_: &mut ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
         );
 
         let [c0, c1, c2] = new_square_fq6(&mut ctx, [&a0, &a1, &a2]);
-        compute_states(&ctx, RawProof::mock_proof().into());
+        let mut compute_ctx = RawProof::mock_proof().into();
+        compute_states(&ctx, &mut compute_ctx);
         let lock_guard = ctx.graph.lock().unwrap();
         let a = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
         let c = a.square();

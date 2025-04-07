@@ -199,7 +199,7 @@ impl GraphContext {
     }
 }
 
-pub fn compute_states(graph_ctx: &GraphContext, ctx: ComputeCtx) {
+pub fn compute_states(graph_ctx: &GraphContext, ctx: &mut ComputeCtx) {
     let inputs: Vec<String> = {
         let graph = graph_ctx.graph.lock().unwrap();
 
@@ -265,7 +265,7 @@ pub fn compute_states(graph_ctx: &GraphContext, ctx: ComputeCtx) {
         }
 
         // execute function
-        let result_state = (cur_node_info.function)(ctx.clone(), predecessor_states);
+        let result_state = (cur_node_info.function)(ctx, predecessor_states);
 
         // update attributes
         assert_eq!(

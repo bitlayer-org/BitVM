@@ -1,5 +1,5 @@
 use crate::autochunker::computation_graph::*;
-use crate::autochunker::functions::new_square_fq6;
+use crate::autochunker::functions::{double_by_tagent_line, new_square_fq6};
 use crate::{define_input, define_overide_script, define_script};
 use std::time;
 // use utils::*;
@@ -108,12 +108,19 @@ fn main_test() {
         define_script!(ctx, c_inv1, Fq6, [c1], neg_fq2());
         define_script!(ctx, c_inv2, Fq6, [c2], neg_fq2());
 
+        // define t4x and t4y
+        define_input!(ctx, t4x, Fq2, extract_t4x());
+        define_input!(ctx, t4y, Fq2, extract_t4y());
+        let (mut t4x, mut t4y) = (t4x, t4y);
+
         let (mut f0, mut f1, mut f2) = (c_inv0, c_inv1, c_inv2);
         for i in 1..65 {
             let mut ctx = ctx.inner_context(&format!("ate_loop_{}", i));
             // square f
             [f0, f1, f2] = new_square_fq6(&mut ctx.inner_context("square_f"), [&f0, &f1, &f2]);
-            // define_script!(ctx, f0, Fq6, [f0], square_fq6());
+
+            // update t4 by tagent line
+            [t4x, t4y] = double_by_tagent_line(&mut ctx.inner_context("t4"), [&t4x, &t4y]);
         }
     }
     /*
@@ -143,23 +150,6 @@ fn main_test() {
         // square f
         [f0, f1, f2] = new_square_fq6(&mut graph, format!("square_f_loop_{}", i), [&f0, &f1, &f2]);
 
-        // the BN254 curve is represented by Y^2 = X^3 + aX + b, where b = 3 and a = 0
-        // For D-type twist (BN254), y^2 = x^3 + b / w^6
-        // mapping from BN254 to twisted-BN254: x -> x / w and y -> y / w^3
-        // mapping from wisted-BN254 to BN254: x -> x \cdot w^2 and y -> y \cdot w^3
-        //
-        // for a point (x_0, y_0) in twisted-BN254, (x_0 w^2, y_0 w^3) the tangent line is y = \lambda x + v
-        // first define the tagent line: y = \lambda x + v
-        // (1) \lambda = (3(x_0 w^2)^2) / 2(y_0 w^3) = (3x_0^2)/2y_0 \cdot w
-        // (2) v = y_0 w^3 - \lambda x_0 w^2 = y_0 -  ((3x_0^2)/2y_0) x_0 \cdot w^3
-        // where \lambda is the slop and v is bias
-        //
-        // use \lambda = \lambda / w, v = v / w^3 to represent the Fq2 parts of coefficients.
-        //
-        // since w^6 = u+9, the evaluation on G1 point (x_p, y_p) would be
-        // (y_p - \lambda x_p - v) = 1 / y_p \cdot (1 + \lambda x_p' + (-v) y_p')
-        // because 1 / y_p is F_p element, can be elimnated by the multiplication
-        //                         = 1 + \lambda x_p' + (-v) y_p' = F_{q^6}(1) + (F_{a^6}(\lamdba + (-v)y_p' \cdot w^2)) \cdot w
 
         // 2.4 caculation tangent line of t4
         let lambda = new_input(&mut graph, format!("t4_lambda_in_loop_{}", i));
@@ -222,7 +212,8 @@ fn main_test() {
     let time = time::Instant::now();
 
     // compute all states
-    compute_states(&ctx, RawProof::mock_proof().into());
+    let mut compute_ctx = RawProof::mock_proof().into();
+    compute_states(&ctx, &mut compute_ctx);
     {
         let lock_guard = ctx.graph.lock().unwrap();
         for i in 0..5 {
