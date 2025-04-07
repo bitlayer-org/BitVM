@@ -7,12 +7,24 @@ use crate::groth16::offchain_checker::compute_c_wi;
 use ark_bn254::{Fq, Fq6, Fr, G1Affine, G1Projective, G2Affine};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{AdditiveGroup, Field, One, PrimeField};
+use bitcoin_script::{script, Script};
 use core::ops::Neg;
 use log::{debug, info, warn};
 use num_bigint::BigUint;
 use std::sync::Arc;
 
 pub type ComputeFn = Box<dyn Fn(&mut ComputeCtx, Vec<State>) -> State>;
+pub type ScriptFn = Box<dyn Fn(&mut ComputeCtx, Vec<State>) -> (Script, Vec<Vec<u8>>)>;
+
+pub fn placeholder_script_fn() -> ScriptFn {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        assert_eq!(inputs.len(), 1);
+        let script = script! {};
+        let data = vec![];
+        (script, data)
+    };
+    Box::new(func)
+}
 
 #[derive(Debug, Clone)]
 pub struct ComputeCtx {
@@ -107,7 +119,7 @@ impl From<RawProof> for ComputeCtx {
 }
 
 /// window multiplication
-pub fn msm_initial(window: usize) -> (ComputeFn, usize) {
+pub fn msm_initial(window: usize) -> (ComputeFn, ScriptFn) {
     // the first step of msm
     let (index, chunk_index) = (0, 0);
 
@@ -138,7 +150,7 @@ pub fn msm_initial(window: usize) -> (ComputeFn, usize) {
         State::G1(Some((compute_ctx.vky0 + window_result).into_affine()))
     };
 
-    (Box::new(func), 302955)
+    (Box::new(func), placeholder_script_fn())
 }
 
 pub fn windows_of_mul_table(window: usize) -> usize {
@@ -147,7 +159,7 @@ pub fn windows_of_mul_table(window: usize) -> usize {
     tables
 }
 
-pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn, usize) {
+pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert!(inputs.len() == 2);
 
@@ -179,7 +191,7 @@ pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn,
         State::G1(Some((window_result + msm_acc).into_affine()))
     };
 
-    (Box::new(func), 302955)
+    (Box::new(func), placeholder_script_fn())
 }
 
 pub fn extract_scalar(index: usize) -> ComputeFn {
@@ -195,13 +207,13 @@ pub fn extract_scalar(index: usize) -> ComputeFn {
     Box::new(func)
 }
 
-pub fn scalar_valid() -> (ComputeFn, usize) {
+pub fn scalar_valid() -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         State::CheckValid(Some(true))
     };
     // TODO: check valid of scalar from script
-    (Box::new(func), 0)
+    (Box::new(func), placeholder_script_fn())
 }
 
 // extract proof.c
@@ -213,17 +225,17 @@ pub fn extract_p2() -> ComputeFn {
 }
 
 // check validation of a G1 point
-pub fn check_g1_point() -> (ComputeFn, usize) {
+pub fn check_g1_point() -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         State::CheckValid(Some(true))
     };
     // TODO: check valid of scalar from script
-    (Box::new(func), 0)
+    (Box::new(func), placeholder_script_fn())
 }
 
 // for the optimization of line evaluation
-pub fn tweak_point() -> (ComputeFn, usize) {
+pub fn tweak_point() -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let point = inputs[0].get_g1();
@@ -234,7 +246,7 @@ pub fn tweak_point() -> (ComputeFn, usize) {
         };
         State::G1(Some(compute_ctx.p2.clone()))
     };
-    (Box::new(func), 0)
+    (Box::new(func), placeholder_script_fn())
 }
 
 // extrac proof.a
@@ -271,13 +283,13 @@ pub fn extract_t4y() -> ComputeFn {
     Box::new(func)
 }
 
-pub fn neg_fq2() -> (ComputeFn, usize) {
+pub fn neg_fq2() -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let fq2 = inputs[0].get_fq2();
         State::Fq2(Some(fq2.neg()))
     };
-    (Box::new(func), 0)
+    (Box::new(func), placeholder_script_fn())
 }
 
 mod tests {

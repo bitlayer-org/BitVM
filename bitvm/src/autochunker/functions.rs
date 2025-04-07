@@ -23,7 +23,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
                 let s0 = a0.square();
                 State::Fq2(Some(s0))
             }),
-            137000
+            placeholder_script_fn()
         )
     );
 
@@ -42,7 +42,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
                 let s1 = (a0 + a1 + a2).square();
                 State::Fq2(Some(s1))
             }),
-            137000
+            placeholder_script_fn()
         )
     );
 
@@ -61,7 +61,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
                 let s2 = (a0 - a1 + a2).square();
                 State::Fq2(Some(s2))
             }),
-            137000
+            placeholder_script_fn()
         )
     );
 
@@ -79,7 +79,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
                 let s3 = a1 * a2 * Fq2::from(2);
                 State::Fq2(Some(s3))
             }),
-            137000
+            placeholder_script_fn()
         )
     );
 
@@ -96,7 +96,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
                 let s4 = a2.square();
                 State::Fq2(Some(s4))
             }),
-            137000
+            placeholder_script_fn()
         )
     );
 
@@ -114,7 +114,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
                 let t4 = (s1 + s2) / Fq2::from(2);
                 State::Fq2(Some(t4))
             }),
-            137000
+            placeholder_script_fn()
         )
     );
 
@@ -132,7 +132,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
                 let c0 = s0 + s3 * Fq6Config::NONRESIDUE;
                 State::Fq2(Some(c0))
             }),
-            137000
+            placeholder_script_fn()
         )
     );
 
@@ -152,7 +152,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
                 let c1 = s1 - s3 - t4 + s4 * Fq6Config::NONRESIDUE;
                 State::Fq2(Some(c1))
             }),
-            137000
+            placeholder_script_fn()
         )
     );
 
@@ -171,7 +171,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
                 let c2 = t4 - s0 - s4;
                 State::Fq2(Some(c2))
             }),
-            137000
+            placeholder_script_fn()
         )
     );
 
@@ -263,11 +263,13 @@ pub fn double_by_tagent_line(
         double_tangent_line_y()
     );
 
+    // TODO: evaluate the point by the line (divisor)
+
     [updated_t4x, updated_t4y]
 }
 
 // inputs t4x, lambda, v
-fn double_tangent_line_y() -> (ComputeFn, usize) {
+fn double_tangent_line_y() -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 3);
         let t4x = inputs[0].get_fq2();
@@ -285,11 +287,11 @@ fn double_tangent_line_y() -> (ComputeFn, usize) {
         State::Fq2(Some(t4y_new))
     };
 
-    (Box::new(func), 0)
+    (Box::new(func), placeholder_script_fn())
 }
 
 // inputs: t4x, lambda
-fn double_tangent_line_x() -> (ComputeFn, usize) {
+fn double_tangent_line_x() -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 2);
         let t4x = inputs[0].get_fq2();
@@ -300,11 +302,11 @@ fn double_tangent_line_x() -> (ComputeFn, usize) {
         State::Fq2(Some(t4x_new))
     };
 
-    (Box::new(func), 0)
+    (Box::new(func), placeholder_script_fn())
 }
 
 // inputs: t4x, t4y, lambda, v
-fn check_line_through_point() -> (ComputeFn, usize) {
+fn check_line_through_point() -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 4);
         let t4x = inputs[0].get_fq2();
@@ -315,10 +317,10 @@ fn check_line_through_point() -> (ComputeFn, usize) {
         // check if t4y = t4x * lambda + v
         State::CheckValid(Some(t4y == t4x * lambda + v))
     };
-    (Box::new(func), 0)
+    (Box::new(func), placeholder_script_fn())
 }
 
-fn check_slope_of_tangent_line() -> (ComputeFn, usize) {
+fn check_slope_of_tangent_line() -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 3);
         let t4x = inputs[0].get_fq2();
@@ -330,7 +332,7 @@ fn check_slope_of_tangent_line() -> (ComputeFn, usize) {
             Fq2::from(3) * t4x.square() * lambda == Fq2::from(2) * t4y.square(),
         ))
     };
-    (Box::new(func), 0)
+    (Box::new(func), placeholder_script_fn())
 }
 
 #[cfg(test)]

@@ -70,7 +70,7 @@ macro_rules! define_overide_script {
 pub struct NodeInfo {
     // other information about graph, such as script, witness, template, etc.
     #[allow(unused)]
-    pub script_size: usize,
+    pub script_fn: Arc<ScriptFn>,
     pub state: State,
     #[allow(unused)]
     pub function: Arc<ComputeFn>,
@@ -80,7 +80,6 @@ pub struct NodeInfo {
 impl std::fmt::Debug for NodeInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NodeInfo")
-            .field("script_size", &self.script_size)
             .field("state", &self.state)
             .finish()
     }
@@ -121,7 +120,7 @@ pub fn new_input(
     compute_fn: ComputeFn,
 ) -> BitVMNode {
     let node_info = NodeInfo {
-        script_size: 0,
+        script_fn: Arc::new(placeholder_script_fn()),
         state: state.clone(),
         function: Arc::new(compute_fn),
         predecessor: vec![],
@@ -134,14 +133,14 @@ pub fn new_input(
 pub fn new_script<'a>(
     graph: &mut BitVMGraph,
     name: String,
-    script_size: usize,
+    script_fn: ScriptFn,
     compute_fn: ComputeFn,
     state: State,
     inputs: Vec<BitVMNode>,
 ) -> BitVMNode {
     let predecessor: Vec<String> = inputs.iter().map(|x| x.name.to_string()).collect();
     let node_info = NodeInfo {
-        script_size,
+        script_fn: Arc::new(script_fn),
         state: state.clone(),
         function: Arc::new(compute_fn),
         predecessor,
@@ -169,7 +168,7 @@ pub fn new_script<'a>(
 }
 
 /// BitVM Graph
-use super::primitve_functions::ComputeCtx;
+use super::primitve_functions::{placeholder_script_fn, ComputeCtx, ScriptFn};
 pub type BitVMGraph = Arc<Mutex<Graph<String, NodeInfo>>>;
 
 pub struct GraphContext {
