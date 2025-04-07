@@ -116,11 +116,12 @@ fn main_test() {
         let (mut f0, mut f1, mut f2) = (c_inv0, c_inv1, c_inv2);
         for i in 1..65 {
             let mut ctx = ctx.inner_context(&format!("ate_loop_{}", i));
+
             // square f
             [f0, f1, f2] = new_square_fq6(&mut ctx.inner_context("square_f"), [&f0, &f1, &f2]);
 
             // update t4 by tagent line
-            [t4x, t4y] = double_by_tagent_line(&mut ctx.inner_context("t4"), [&t4x, &t4y]);
+            [t4x, t4y] = double_by_tagent_line(&mut ctx.inner_context("double_t4"), &t4x, &t4y);
         }
     }
     /*
