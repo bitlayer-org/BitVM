@@ -4,7 +4,6 @@ use ark_bn254::{Fq2, Fq6, Fq6Config, G2Affine};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, Fp6Config};
 use std::ops::Neg;
-use std::sync::Arc;
 
 /// three input each which is fq2
 pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVMNode; 3] {
