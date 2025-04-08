@@ -129,6 +129,9 @@ fn main_test() {
 
             // evaluate t2 and t3 by precomputed tagent line
             let (t3_c0, t3_c1, t2_c0, t2_c1) = evaluate_t2_and_t3(&mut ctx, &p3_tweak, &p2_tweak);
+
+            // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
+            let eval_multi = line_evaluate_multiplication();
         }
     }
     /*

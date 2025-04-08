@@ -505,6 +505,78 @@ pub fn evaluate_t2_and_t3(
     (t3_c0, t3_c1, t2_c0, t2_c1)
 }
 
+// line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
+// equals
+// [1 + (t4_c0, t4_c1, 0) J] * [1 + (t3_c0, t3_c1, 0) J] * [1 + (t2_c0, t2_c1, 0) J]
+fn line_evaluate_multiplication(
+    ctx: &mut GraphContext,
+    t4_c0: &BitVMNode,
+    t4_c1: &BitVMNode,
+    t3_c0: &BitVMNode,
+    t3_c1: &BitVMNode,
+    t2_c0: &BitVMNode,
+    t2_c1: &BitVMNode,
+) {
+    // step 1:
+    // [1 + (t4_c0, t4_c1, 0) J] * [1 + (t3_c0, t3_c1, 0) J] ->
+    // (1 + (s0, s1, s2) J^2)+ (d0, d1, 0) J ->
+    // (m0, m1, m2) + (d0, d1, 0) J
+    //
+    // d0 = t4_c0 + t3_c0
+    define_script!(ctx, d0, Fq2, [t4_c0, t3_c0], fq2_add());
+    // d1 = t4_c1 + t3_c1
+    define_script!(ctx, d1, Fq2, [t4_c1, t3_c1], fq2_add());
+    // s0 = t4_c0 * t3_c0
+    define_script!(ctx, s0, Fq2, [t4_c0, t3_c0], fq2_mul());
+    // s2 = t4_c1 * t3_c1
+    define_script!(ctx, s2, Fq2, [t4_c1, t3_c1], fq2_mul());
+    // [b]inomial = (t4_c0 + t3_c0) * (t4_c1 + t4_c0)
+    define_script!(ctx, b, Fq2, [d0, d1], fq2_mul());
+    // s1 = b - s0 - s2
+    define_script!(ctx, s1, Fq2, [b, s0, s2], fq2_sub2());
+    // (m0, m1, m2) = (s0, s1, s2) * mul_fq6_by_nonresidue + 1
+}
+
+fn fq2_add() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 2);
+            let a = inputs[0].get_fq2();
+            let b = inputs[1].get_fq2();
+            let c = a + b;
+            State::Fq2(Some(c))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
+fn fq2_mul() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 2);
+            let a = inputs[0].get_fq2();
+            let b = inputs[1].get_fq2();
+            let c = a * b;
+            State::Fq2(Some(c))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
+fn fq2_sub2() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 2);
+            let a = inputs[0].get_fq2();
+            let b = inputs[1].get_fq2();
+            let c = inputs[1].get_fq2();
+            let d = a - b - c;
+            State::Fq2(Some(d))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use crate::autochunker::computation_graph::{compute_states, new_input, GraphContext};
