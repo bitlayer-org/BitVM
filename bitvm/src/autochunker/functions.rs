@@ -1,10 +1,10 @@
-use std::sync::Arc;
-
 use super::{computation_graph::*, intermediate_state::*, primitve_functions::*};
 use crate::{define_input, define_overide_script, define_script};
 use ark_bn254::{Fq2, Fq6, Fq6Config, G2Affine};
-use ark_ec::AffineRepr;
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, Fp6Config};
+use std::ops::Neg;
+use std::sync::Arc;
 
 /// three input each which is fq2
 pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVMNode; 3] {
@@ -194,12 +194,15 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
 // since w^6 = u+9, the evaluation on G1 point (x_p, y_p) would be
 // (y_p - \lambda x_p - v) = 1 / y_p \cdot (1 + \lambda x_p' + (-v) y_p')
 // because 1 / y_p is F_p element, can be elimnated by the multiplication
-//                         = 1 + \lambda x_p' + (-v) y_p' = F_{q^6}(1) + (F_{a^6}(\lamdba + (-v)y_p' \cdot w^2)) \cdot w
-pub fn double_by_tagent_line(
+//                         = 1 + \lambda x_p' + (-v) y_p' = F_{q^6}(1) + (F_{a^6}(\lamdba x_p' + (-v)y_p' \cdot w^2 + 0 \cdot w^4)) \cdot w
+//
+// function outputs: t4x, t4y, evaluate_c0, evaluate_c1
+pub fn double_by_tangent_line(
     ctx: &mut GraphContext,
     t4x: &BitVMNode,
     t4y: &BitVMNode,
-) -> [BitVMNode; 2] {
+    p4: &BitVMNode,
+) -> (BitVMNode, BitVMNode, BitVMNode, BitVMNode) {
     // define lambda
     define_input!(
         ctx,
@@ -263,9 +266,11 @@ pub fn double_by_tagent_line(
         double_tangent_line_y()
     );
 
-    // TODO: evaluate the point by the line (divisor)
+    // evaluate the point by the line (divisor)
+    define_script!(ctx, c0, Fq2, [lambda, p4], nonconstant_line_evaluate_c0());
+    define_script!(ctx, c1, Fq2, [v, p4], nonconstant_line_evaluate_c1());
 
-    [updated_t4x, updated_t4y]
+    (updated_t4x, updated_t4y, c0, c1)
 }
 
 // inputs t4x, lambda, v
@@ -333,6 +338,172 @@ fn check_slope_of_tangent_line() -> (ComputeFn, ScriptFn) {
         ))
     };
     (Box::new(func), placeholder_script_fn())
+}
+
+fn nonconstant_line_evaluate_c0() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 2);
+        let lambda = inputs[0].get_fq2();
+        let p4 = inputs[1].get_g1();
+
+        let mut c0 = lambda;
+        c0.mul_assign_by_basefield(&p4.x().unwrap());
+
+        // evaluate the point by the line (divisor)
+        State::Fq2(Some(c0))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+
+fn nonconstant_line_evaluate_c1() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 2);
+        let v = inputs[0].get_fq2();
+        let p4 = inputs[1].get_g1();
+
+        let mut c1 = v.neg();
+        c1.mul_assign_by_basefield(&p4.y().unwrap());
+
+        // evaluate the point by the line (divisor)
+        State::Fq2(Some(c1))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+
+// outputs [lambda, v]
+fn constant_line_compute(
+    compute_ctx: &ComputeCtx,
+    t3_or_t2: bool,
+    is_double: bool,
+    is_neg_bit: bool,
+) -> (Fq2, Fq2, G2Affine) {
+    // select t_point
+    let (t_point, q_point) = if t3_or_t2 {
+        (compute_ctx.t3, compute_ctx.q3)
+    } else {
+        (compute_ctx.t2, compute_ctx.q2)
+    };
+
+    // select is_neg_bit
+    let q_point = if is_neg_bit { q_point.neg() } else { q_point };
+
+    // select is_double
+    let lambda = if is_double {
+        (t_point.x.square() + t_point.x.square() + t_point.x.square()) / (t_point.y + t_point.y)
+    } else {
+        (t_point.y - q_point.y) / (t_point.x - q_point.x)
+    };
+
+    // update t_point
+    let new_t_point = if is_double {
+        t_point + t_point
+    } else if is_neg_bit {
+        t_point - q_point
+    } else {
+        t_point + q_point
+    };
+
+    let v = t_point.y - lambda * t_point.x;
+
+    (lambda, v, new_t_point.into_affine())
+}
+
+// t3_or_t2: true means t3, false means t2
+// is_double: true means double point, false means add point
+// is_neg_bit: true means negation, false means no negation
+pub const evalute_t3: bool = true;
+pub const evalute_t2: bool = false;
+pub const use_double: bool = true;
+pub const use_add: bool = false;
+pub const use_neg: bool = true;
+pub const use_pos: bool = false;
+pub fn constant_line_evaluate_c0(
+    t3_or_t2: bool,
+    is_double: bool,
+    is_neg_bit: bool,
+) -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 1);
+        let p_point = inputs[0].get_g1();
+
+        let (lambda, _, _) = constant_line_compute(compute_ctx, t3_or_t2, is_double, is_neg_bit);
+
+        let mut c0 = lambda;
+        c0.mul_assign_by_basefield(&p_point.x().unwrap());
+
+        // evaluate the point by the line (divisor)
+        State::Fq2(Some(c0))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+pub fn constant_line_evaluate_c1(
+    t3_or_t2: bool,
+    is_double: bool,
+    is_neg_bit: bool,
+) -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 1);
+        let p_point = inputs[0].get_g1();
+
+        let (_, v, new_t_point) =
+            constant_line_compute(compute_ctx, t3_or_t2, is_double, is_neg_bit);
+
+        let mut c1 = v.neg();
+        c1.mul_assign_by_basefield(&p_point.y().unwrap());
+
+        // update t point
+        if t3_or_t2 {
+            compute_ctx.t3 = new_t_point;
+        } else {
+            compute_ctx.t2 = new_t_point;
+        }
+
+        // evaluate the point by the line (divisor)
+        State::Fq2(Some(c1))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+
+// outputs: t3_c0, t3_c1, t2_c0, t2_c1
+pub fn evaluate_t2_and_t3(
+    ctx: &mut GraphContext,
+    p3_tweak: &BitVMNode,
+    p2_tweak: &BitVMNode,
+) -> (BitVMNode, BitVMNode, BitVMNode, BitVMNode) {
+    // update t3 by tagent line
+    define_script!(
+        ctx,
+        t3_c0,
+        Fq2,
+        [p3_tweak],
+        constant_line_evaluate_c0(evalute_t3, use_double, use_neg)
+    );
+
+    define_script!(
+        ctx,
+        t3_c1,
+        Fq2,
+        [p3_tweak],
+        constant_line_evaluate_c1(evalute_t3, use_double, use_neg)
+    );
+
+    // update t2 by tagent line
+    define_script!(
+        ctx,
+        t2_c0,
+        Fq2,
+        [p2_tweak],
+        constant_line_evaluate_c0(evalute_t2, use_double, use_neg)
+    );
+    define_script!(
+        ctx,
+        t2_c1,
+        Fq2,
+        [p2_tweak],
+        constant_line_evaluate_c1(evalute_t2, use_double, use_neg)
+    );
+
+    (t3_c0, t3_c1, t2_c0, t2_c1)
 }
 
 #[cfg(test)]

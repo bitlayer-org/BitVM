@@ -32,9 +32,13 @@ pub struct ComputeCtx {
     pub msm_points_from_pk: Vec<G1Affine>,
     pub msm_scalars: Vec<Fr>,
     pub vky0: G1Affine,
-    pub p2: G1Affine,
-    pub p4: G1Affine,
-    pub t4: G2Affine,
+    pub p2: G1Affine, // immutable
+    pub p4: G1Affine, // immutable
+    pub q3: G2Affine, // immutable
+    pub q2: G2Affine, // immutable
+    pub t4: G2Affine, // mutable
+    pub t3: G2Affine, // mutable
+    pub t2: G2Affine, // mutable
     pub c: Fq6,
 }
 
@@ -114,6 +118,10 @@ impl From<RawProof> for ComputeCtx {
             p4: p4,
             c: c.c1 / c.c0,
             t4: q4,
+            t3: q3,
+            t2: q2,
+            q3: q3,
+            q2: q2,
         }
     }
 }

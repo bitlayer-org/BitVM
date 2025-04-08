@@ -1,6 +1,7 @@
 use crate::autochunker::computation_graph::*;
-use crate::autochunker::functions::{double_by_tagent_line, new_square_fq6};
+use crate::autochunker::functions::*;
 use crate::{define_input, define_overide_script, define_script};
+use std::sync::Arc;
 use std::time;
 // use utils::*;
 use crate::autochunker::intermediate_state::*;
@@ -90,8 +91,8 @@ fn main_test() {
         let mut ctx = ctx.inner_context("Pairing");
 
         define_input!(ctx, p2, G1, extract_p2());
-        define_script!(ctx, p2_check, CheckValid, [p2], check_g1_point());
-        define_script!(ctx, _p2_tweak, G1, [p2], tweak_point());
+        define_script!(ctx, _p2_check, CheckValid, [p2], check_g1_point());
+        define_script!(ctx, p2_tweak, G1, [p2], tweak_point());
 
         define_input!(ctx, p4, G1, extract_p4());
         define_script!(ctx, _p4_check, CheckValid, [p4], check_g1_point());
@@ -120,8 +121,14 @@ fn main_test() {
             // square f
             [f0, f1, f2] = new_square_fq6(&mut ctx.inner_context("square_f"), [&f0, &f1, &f2]);
 
-            // update t4 by tagent line
-            [t4x, t4y] = double_by_tagent_line(&mut ctx.inner_context("double_t4"), &t4x, &t4y);
+            // evaluate t4 by tagent line
+            let res =
+                double_by_tangent_line(&mut ctx.inner_context("double_t4"), &t4x, &t4y, &p4_tweak);
+            (t4x, t4y) = (res.0, res.1);
+            let (t4_c0, t4_c1) = (res.2, res.3);
+
+            // evaluate t2 and t3 by precomputed tagent line
+            let (t3_c0, t3_c1, t2_c0, t2_c1) = evaluate_t2_and_t3(&mut ctx, &p3_tweak, &p2_tweak);
         }
     }
     /*
