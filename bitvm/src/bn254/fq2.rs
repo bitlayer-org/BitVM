@@ -597,4 +597,16 @@ mod test {
             run(script);
         }
     }
+
+    #[test]
+    fn test_hinted_mul_lc4_keep_elements() {
+        let mut prng = ChaCha20Rng::seed_from_u64(0);
+
+        let a = ark_bn254::Fq2::rand(&mut prng);
+        let b = ark_bn254::Fq2::rand(&mut prng);
+        let c = ark_bn254::Fq2::rand(&mut prng);
+        let d = ark_bn254::Fq2::rand(&mut prng);
+        let (script, witness) = Fq2::hinted_mul_lc4_keep_elements(a, b, c, d);
+        println!("len: {}", script.len());
+    }
 }

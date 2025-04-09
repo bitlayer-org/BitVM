@@ -1,8 +1,9 @@
 use super::{computation_graph::*, intermediate_state::*, primitve_functions::*};
 use crate::{define_input, define_overide_script, define_script};
-use ark_bn254::{Fq2, Fq6, Fq6Config, G2Affine};
+use ark_bn254::{Fq12, Fq2, Fq6, Fq6Config, G2Affine};
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, Fp6Config};
+use serde::de;
 use std::ops::Neg;
 
 /// three input each which is fq2
@@ -348,6 +349,9 @@ fn nonconstant_line_evaluate_c0() -> (ComputeFn, ScriptFn) {
         let mut c0 = lambda;
         c0.mul_assign_by_basefield(&p4.x().unwrap());
 
+        // update c0 of ctx.evaluate_p4
+        compute_ctx.evaluate_p4 = Some(Fq6::new(c0, Fq2::from(0), Fq2::from(0)));
+
         // evaluate the point by the line (divisor)
         State::Fq2(Some(c0))
     };
@@ -362,6 +366,13 @@ fn nonconstant_line_evaluate_c1() -> (ComputeFn, ScriptFn) {
 
         let mut c1 = v.neg();
         c1.mul_assign_by_basefield(&p4.y().unwrap());
+
+        // update c1 of ctx.evaluate_p4
+        compute_ctx.evaluate_p4 = Some(Fq6::new(
+            compute_ctx.evaluate_p4.unwrap().c0,
+            c1,
+            Fq2::from(0),
+        ));
 
         // evaluate the point by the line (divisor)
         State::Fq2(Some(c1))
@@ -444,17 +455,21 @@ pub fn constant_line_evaluate_c1(
         assert_eq!(inputs.len(), 1);
         let p_point = inputs[0].get_g1();
 
-        let (_, v, new_t_point) =
+        let (lambda, v, new_t_point) =
             constant_line_compute(compute_ctx, t3_or_t2, is_double, is_neg_bit);
 
+        let mut c0 = lambda;
+        c0.mul_assign_by_basefield(&p_point.x().unwrap());
         let mut c1 = v.neg();
         c1.mul_assign_by_basefield(&p_point.y().unwrap());
 
-        // update t point
+        // update t point and point evaluate
         if t3_or_t2 {
             compute_ctx.t3 = new_t_point;
+            compute_ctx.evaluate_p3 = Some(Fq6::new(c0, c1, Fq2::from(0)));
         } else {
             compute_ctx.t2 = new_t_point;
+            compute_ctx.evaluate_p2 = Some(Fq6::new(c0, c1, Fq2::from(0)));
         }
 
         // evaluate the point by the line (divisor)
@@ -516,25 +531,145 @@ fn line_evaluate_multiplication(
     t3_c1: &BitVMNode,
     t2_c0: &BitVMNode,
     t2_c1: &BitVMNode,
-) {
+) -> (BitVMNode, BitVMNode, BitVMNode) {
     // step 1:
     // [1 + (t4_c0, t4_c1, 0) J] * [1 + (t3_c0, t3_c1, 0) J] ->
     // (1 + (s0, s1, s2) J^2)+ (d0, d1, 0) J ->
     // (m0, m1, m2) + (d0, d1, 0) J
     //
-    // d0 = t4_c0 + t3_c0
-    define_script!(ctx, d0, Fq2, [t4_c0, t3_c0], fq2_add());
-    // d1 = t4_c1 + t3_c1
-    define_script!(ctx, d1, Fq2, [t4_c1, t3_c1], fq2_add());
+    // d0 = t3_c0 + t3_c1
+    define_script!(ctx, d0, Fq2, [t3_c0, t3_c1], fq2_add());
+    // d1 = t4_c0 + t4_c1
+    define_script!(ctx, d1, Fq2, [t4_c0, t4_c1], fq2_add());
     // s0 = t4_c0 * t3_c0
     define_script!(ctx, s0, Fq2, [t4_c0, t3_c0], fq2_mul());
     // s2 = t4_c1 * t3_c1
     define_script!(ctx, s2, Fq2, [t4_c1, t3_c1], fq2_mul());
-    // [b]inomial = (t4_c0 + t3_c0) * (t4_c1 + t4_c0)
+    // [b]inomial = (t3_c0 + t3_c1) * (t4_c0 + t4_c1)
     define_script!(ctx, b, Fq2, [d0, d1], fq2_mul());
     // s1 = b - s0 - s2
     define_script!(ctx, s1, Fq2, [b, s0, s2], fq2_sub2());
     // (m0, m1, m2) = (s0, s1, s2) * mul_fq6_by_nonresidue + 1
+    //              = (s2 * (9+u), s0, s1) + 1
+    //              = (s2 * (9+u) + 1, s0, s1)
+    define_script!(ctx, m0, Fq2, [s2], mul_nonresidue_plus_one());
+    let (m1, m2) = (s0, s1);
+    //
+    // step 2:
+    // [ (m0, m1, m2) + (d0, d1, 0) J ] * [1 + (t2_c0, t2_c1, 0) J] ->
+    // (1 + (e0, e1, e2) J^2) + ((d0, d1, 0) + (t2_c0, t2_c1, 0) * (m0, m1, m2) ) J ->
+    // ((m0, m1, m2) + (h0, h1, h2)) +  ((d0, d1, 0) + (t2_c0, t2_c1, 0) * (m0, m1, m2) ) J
+    //
+    // d_sum = d0 + d1
+    define_script!(ctx, d_sum, Fq2, [d0, d1], fq2_add());
+    // t2_sum = t2_c0 + t2_c1
+    define_script!(ctx, t2_sum, Fq2, [t2_c0, t2_c1], fq2_add());
+    // [bi]nomial = (d0 + d1) * (t2_c0 + t2_c1)
+    define_script!(ctx, bi, Fq2, [t2_sum, d_sum], fq2_mul());
+    // e0 = t2_c0 * d0
+    define_script!(ctx, e0, Fq2, [t2_c0, d0], fq2_mul());
+    // e2 = t2_c1 * d1
+    define_script!(ctx, e2, Fq2, [t2_c1, d1], fq2_mul());
+    // e1 = bi - e0 - e2
+    define_script!(ctx, e1, Fq2, [bi, e0, e2], fq2_sub2());
+    // (h0, h1, h2) = (e0, e1, e2) * mul_fq6_by_nonresidue + 1
+    //             = (e2 * (9+u), e0, e1) + 1
+    //             = (e2 * (9+u) + 1, e0, e1)
+    define_script!(ctx, h0, Fq2, [e2], mul_nonresidue_plus_one());
+    let (h1, h2) = (e0, e1);
+    //
+    // step 3:
+    // ((m0, m1, m2) + (h0, h1, h2)) +  ((d0, d1, 0) + (t2_c0, t2_c1, 0) * (m0, m1, m2) ) J ->
+    // (mh0, mh1, mh2) + ((d0, d1, 0) + (k0, k1, k2)) J ->
+    // (mh0, mh1, mh2) + (dk0, dk1, dk2) J
+    //
+    define_script!(ctx, mh0, Fq2, [m0, h0], fq2_add());
+    define_script!(ctx, mh1, Fq2, [m1, h1], fq2_add());
+    define_script!(ctx, mh2, Fq2, [m2, h2], fq2_add());
+    // k0 = t2_c0 * m0 + t2_c1 * m2 * mul_fq6_by_nonresidue
+    //    = t2_c0 * m0 + t2_c1 * m2_tweak
+    define_script!(ctx, m2_tweak, Fq2, [m2], mul_nonresidue());
+    define_script!(ctx, k0, Fq2, [t2_c0, m0, t2_c1, m2_tweak], fq2_mul_lc4());
+    // k1 = t2_c0 * m1 + t2_c1 * m0
+    define_script!(ctx, k1, Fq2, [t2_c0, m1, t2_c1, m0], fq2_mul_lc4());
+    // k2 = t2_c0 * m2 + t2_c1 * m1
+    define_script!(ctx, k2, Fq2, [t2_c0, m2, t2_c1, m1], fq2_mul_lc4());
+    // (dk0, dk1, dk2) = (d0, d1, 0) + (k0, k1, k2)
+    define_script!(ctx, dk0, Fq2, [d0, k0], fq2_add());
+    define_script!(ctx, dk1, Fq2, [d1, k1], fq2_add());
+    let dk2 = k2;
+    //
+    // step 4:
+    // (mh0, mh1, mh2) + (dk0, dk1, dk2) J ->
+    // 1 + (dk0, dk1, dk2) * 1 / (mh0, mh1, mh2) J ->
+    // 1 + (g0, g1, g2) J, and check (g0, g1, g2) * (mh0, mh1, mh2) == (dk0, dk1, dk2)
+    //
+    define_input!(ctx, g0, Fq2, extract_line_evaluation_g(0));
+    define_input!(ctx, g1, Fq2, extract_line_evaluation_g(1));
+    define_input!(ctx, g2, Fq2, extract_line_evaluation_g(2));
+    //
+    // check if (g0, g1, g2) * (mh0, mh1, mh2) == (dk0, dk1, dk2)
+    // TODO:
+    /*
+    let (x0, x1, x2) = fq6_mul(g0, g1, g2, mh0, mh1, mh2);
+    define_script!(ctx, _check_mul_x0, CheckValid, [x0, dk0], check_fq2_equal());
+    define_script!(ctx, _check_mul_x1, CheckValid, [x1, dk1], check_fq2_equal());
+    define_script!(ctx, _check_mul_x2, CheckValid, [x2, dk2], check_fq2_equal());
+    */
+
+    (g0, g1, g2)
+}
+
+fn extract_line_evaluation_g(index: usize) -> ComputeFn {
+    assert!(index < 3);
+    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
+        let evaluate_p2 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p2.unwrap());
+        let evaluate_p3 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p3.unwrap());
+        let evaluate_p4 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p4.unwrap());
+        let result = evaluate_p2 * evaluate_p3 * evaluate_p4;
+        let g = result.c1 / result.c0;
+        let select_array = [g.c0, g.c1, g.c2];
+        State::Fq2(Some(Fq2::from(select_array[index])))
+    })
+}
+
+fn fq2_mul_lc4() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 4);
+            let a = inputs[0].get_fq2();
+            let b = inputs[1].get_fq2();
+            let c = inputs[2].get_fq2();
+            let d = inputs[3].get_fq2();
+            let result = a * b + c * d;
+            State::Fq2(Some(result))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
+fn mul_nonresidue() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 1);
+            let a = inputs[0].get_fq2();
+            let b = a * Fq6Config::NONRESIDUE;
+            State::Fq2(Some(b))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
+fn mul_nonresidue_plus_one() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 1);
+            let a = inputs[0].get_fq2();
+            let b = a * Fq6Config::NONRESIDUE + Fq2::from(1);
+            State::Fq2(Some(b))
+        }),
+        placeholder_script_fn(),
+    )
 }
 
 fn fq2_add() -> (ComputeFn, ScriptFn) {
