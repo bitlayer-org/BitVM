@@ -4,8 +4,10 @@ use crate::bn254::fp254impl::Fp254Impl;
 use crate::bn254::utils::fq_to_bits;
 use crate::groth16::constants::LAMBDA;
 use crate::groth16::offchain_checker::compute_c_wi;
-use ark_bn254::{Fq, Fq6, Fr, G1Affine, G1Projective, G2Affine};
+use ark_bn254::Fq6Config;
+use ark_bn254::{Fq, Fq12, Fq2, Fq6, Fr, G1Affine, G1Projective, G2Affine};
 use ark_ec::{AffineRepr, CurveGroup};
+use ark_ff::Fp6Config;
 use ark_ff::{AdditiveGroup, Field, One, PrimeField};
 use bitcoin_script::{script, Script};
 use core::ops::Neg;
@@ -306,6 +308,110 @@ pub fn neg_fq2() -> (ComputeFn, ScriptFn) {
         State::Fq2(Some(fq2.neg()))
     };
     (Box::new(func), placeholder_script_fn())
+}
+
+pub fn extract_line_evaluation_g(index: usize) -> ComputeFn {
+    assert!(index < 3);
+    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
+        let evaluate_p2 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p2.unwrap());
+        let evaluate_p3 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p3.unwrap());
+        let evaluate_p4 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p4.unwrap());
+        let result = evaluate_p2 * evaluate_p3 * evaluate_p4;
+        let g = result.c1 / result.c0;
+        let select_array = [g.c0, g.c1, g.c2];
+        State::Fq2(Some(Fq2::from(select_array[index])))
+    })
+}
+
+pub fn fq2_mul_lc4() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 4);
+            let a = inputs[0].get_fq2();
+            let b = inputs[1].get_fq2();
+            let c = inputs[2].get_fq2();
+            let d = inputs[3].get_fq2();
+            let result = a * b + c * d;
+            State::Fq2(Some(result))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
+pub fn mul_nonresidue() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 1);
+            let a = inputs[0].get_fq2();
+            let b = a * Fq6Config::NONRESIDUE;
+            State::Fq2(Some(b))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
+pub fn fq2_plus_one() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 1);
+            let a = inputs[0].get_fq2();
+            let b = a + Fq2::from(1);
+            State::Fq2(Some(b))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
+pub fn fq2_add() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 2);
+            let a = inputs[0].get_fq2();
+            let b = inputs[1].get_fq2();
+            let c = a + b;
+            State::Fq2(Some(c))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
+pub fn fq2_mul() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 2);
+            let a = inputs[0].get_fq2();
+            let b = inputs[1].get_fq2();
+            let c = a * b;
+            State::Fq2(Some(c))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
+pub fn fq2_sub2() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 2);
+            let a = inputs[0].get_fq2();
+            let b = inputs[1].get_fq2();
+            let c = inputs[1].get_fq2();
+            let d = a - b - c;
+            State::Fq2(Some(d))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
+pub fn check_fq2_equal() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 2);
+            let a = inputs[0].get_fq2();
+            let b = inputs[1].get_fq2();
+            State::CheckValid(Some(a == b))
+        }),
+        placeholder_script_fn(),
+    )
 }
 
 mod tests {

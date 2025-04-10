@@ -188,7 +188,7 @@ impl GraphContext {
     pub fn inner_context(&self, prefix: &str) -> GraphContext {
         GraphContext {
             graph: self.graph.clone(),
-            variable_prefix: format!("{}{}", self.variable_prefix.clone(), prefix),
+            variable_prefix: format!("{}_{}", self.variable_prefix.clone(), prefix),
         }
     }
 

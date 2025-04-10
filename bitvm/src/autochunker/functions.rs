@@ -243,7 +243,7 @@ fn new_mul_fq6(ctx: &mut GraphContext, a: [&BitVMNode; 3], b: [&BitVMNode; 3]) -
         )
     );
 
-    // v3 = (a0 + 2a1 + 3a2) * (b0 + 2b1 + 3b2)
+    // v3 = (a0 + 2a1 + 4a2) * (b0 + 2b1 + 4b2)
     define_script!(
         ctx,
         v3,
@@ -258,14 +258,15 @@ fn new_mul_fq6(ctx: &mut GraphContext, a: [&BitVMNode; 3], b: [&BitVMNode; 3]) -
                 let b0 = inputs[3].get_fq2();
                 let b1 = inputs[4].get_fq2();
                 let b2 = inputs[5].get_fq2();
-                let v3 = (a0 + a1 + a1 + a2 + a2 + a2) * (b0 + b1 + b1 + b2 + b2 + b2);
+                let v3 = (a0 + Fq2::from(2) * a1 + Fq2::from(4) * a2)
+                    * (b0 + Fq2::from(2) * b1 + Fq2::from(4) * b2);
                 State::Fq2(Some(v3))
             }),
             placeholder_script_fn()
         )
     );
 
-    // v4 = a2 + b2
+    // v4 = a2 * b2
     define_script!(
         ctx,
         v4,
@@ -276,7 +277,7 @@ fn new_mul_fq6(ctx: &mut GraphContext, a: [&BitVMNode; 3], b: [&BitVMNode; 3]) -
                 assert!(inputs.len() == 2);
                 let a2 = inputs[0].get_fq2();
                 let b2 = inputs[1].get_fq2();
-                let v4 = a2 + b2;
+                let v4 = a2 * b2;
                 State::Fq2(Some(v4))
             }),
             placeholder_script_fn()
@@ -837,105 +838,11 @@ fn line_evaluate_multiplication(
     //
     // check if (g0, g1, g2) * (mh0, mh1, mh2) == (dk0, dk1, dk2)
     let [x0, x1, x2] = new_mul_fq6(ctx, [&g0, &g1, &g2], [&mh0, &mh1, &mh2]);
-    /*
     define_script!(ctx, _check_mul_x0, CheckValid, [x0, dk0], check_fq2_equal());
     define_script!(ctx, _check_mul_x1, CheckValid, [x1, dk1], check_fq2_equal());
     define_script!(ctx, _check_mul_x2, CheckValid, [x2, dk2], check_fq2_equal());
-    */
 
     (g0, g1, g2)
-}
-
-fn extract_line_evaluation_g(index: usize) -> ComputeFn {
-    assert!(index < 3);
-    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
-        let evaluate_p2 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p2.unwrap());
-        let evaluate_p3 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p3.unwrap());
-        let evaluate_p4 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p4.unwrap());
-        let result = evaluate_p2 * evaluate_p3 * evaluate_p4;
-        let g = result.c1 / result.c0;
-        let select_array = [g.c0, g.c1, g.c2];
-        State::Fq2(Some(Fq2::from(select_array[index])))
-    })
-}
-
-fn fq2_mul_lc4() -> (ComputeFn, ScriptFn) {
-    (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
-            assert!(inputs.len() == 4);
-            let a = inputs[0].get_fq2();
-            let b = inputs[1].get_fq2();
-            let c = inputs[2].get_fq2();
-            let d = inputs[3].get_fq2();
-            let result = a * b + c * d;
-            State::Fq2(Some(result))
-        }),
-        placeholder_script_fn(),
-    )
-}
-
-fn mul_nonresidue() -> (ComputeFn, ScriptFn) {
-    (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
-            assert!(inputs.len() == 1);
-            let a = inputs[0].get_fq2();
-            let b = a * Fq6Config::NONRESIDUE;
-            State::Fq2(Some(b))
-        }),
-        placeholder_script_fn(),
-    )
-}
-
-fn fq2_plus_one() -> (ComputeFn, ScriptFn) {
-    (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
-            assert!(inputs.len() == 1);
-            let a = inputs[0].get_fq2();
-            let b = a + Fq2::from(1);
-            State::Fq2(Some(b))
-        }),
-        placeholder_script_fn(),
-    )
-}
-
-fn fq2_add() -> (ComputeFn, ScriptFn) {
-    (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
-            assert!(inputs.len() == 2);
-            let a = inputs[0].get_fq2();
-            let b = inputs[1].get_fq2();
-            let c = a + b;
-            State::Fq2(Some(c))
-        }),
-        placeholder_script_fn(),
-    )
-}
-
-fn fq2_mul() -> (ComputeFn, ScriptFn) {
-    (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
-            assert!(inputs.len() == 2);
-            let a = inputs[0].get_fq2();
-            let b = inputs[1].get_fq2();
-            let c = a * b;
-            State::Fq2(Some(c))
-        }),
-        placeholder_script_fn(),
-    )
-}
-
-fn fq2_sub2() -> (ComputeFn, ScriptFn) {
-    (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
-            assert!(inputs.len() == 2);
-            let a = inputs[0].get_fq2();
-            let b = inputs[1].get_fq2();
-            let c = inputs[1].get_fq2();
-            let d = a - b - c;
-            State::Fq2(Some(d))
-        }),
-        placeholder_script_fn(),
-    )
 }
 
 #[cfg(test)]
@@ -943,31 +850,38 @@ mod tests {
     use crate::autochunker::computation_graph::{
         compute_states, new_input, BitVMNode, GraphContext,
     };
-    use crate::autochunker::functions::new_square_fq6;
+    use crate::autochunker::functions::{new_mul_fq6, new_square_fq6};
     use crate::autochunker::intermediate_state::State;
     use crate::autochunker::primitve_functions::ComputeCtx;
     use crate::autochunker::proof::RawProof;
     use crate::{define_input, define_overide_script, define_script};
-    use ark_bn254::{Fq2, Fq6};
+    use ark_bn254::{Fq2, Fq6, Fq6Config};
     use ark_ff::Field;
-    use log::info;
+    use ark_ff::Fp6Config;
+    use log::{debug, info};
 
     fn new_fq2_1(ctx: &mut GraphContext) -> BitVMNode {
         define_input!(
             ctx,
-            x,
+            _o,
             Fq2,
             Box::new(|_: &mut ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
         );
-        x
+        _o
+    }
+
+    fn get_state(ctx: &GraphContext, name: &str) -> State {
+        let lock_guard = ctx.graph.lock().unwrap();
+        let node = lock_guard.get_node(name.to_string()).unwrap();
+        node.attributes.clone().unwrap().state
     }
 
     #[test_log::test]
     fn test_square_fq6() {
         let mut ctx = GraphContext::new("test");
-        let a0 = new_fq2_1(&mut ctx);
-        let a1 = new_fq2_1(&mut ctx);
-        let a2 = new_fq2_1(&mut ctx);
+        let a0 = new_fq2_1(&mut ctx.inner_context("a0"));
+        let a1 = new_fq2_1(&mut ctx.inner_context("a1"));
+        let a2 = new_fq2_1(&mut ctx.inner_context("a2"));
         let [c0, c1, c2] = new_square_fq6(&mut ctx, [&a0, &a1, &a2]);
         // compute states
         let mut compute_ctx = RawProof::mock_proof().into();
@@ -986,5 +900,62 @@ mod tests {
             info!("c{}: {:?}", idx, value);
             assert_eq!(value, cx);
         }
+    }
+
+    #[test_log::test]
+    fn test_mul_fq6() {
+        let mut ctx = GraphContext::new("test");
+        let a0 = new_fq2_1(&mut ctx.inner_context("a0"));
+        let a1 = new_fq2_1(&mut ctx.inner_context("a1"));
+        let a2 = new_fq2_1(&mut ctx.inner_context("a2"));
+        let b0 = new_fq2_1(&mut ctx.inner_context("b0"));
+        let b1 = new_fq2_1(&mut ctx.inner_context("b1"));
+        let b2 = new_fq2_1(&mut ctx.inner_context("b2"));
+        let [c0, c1, c2] = new_mul_fq6(&mut ctx, [&a0, &a1, &a2], [&b0, &b1, &b2]);
+        // compute states
+        let mut compute_ctx = RawProof::mock_proof().into();
+        compute_states(&ctx, &mut compute_ctx);
+
+        // computation process
+        {
+            let a = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
+            let b = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
+            let (a0, a1, a2) = (a.c0, a.c1, a.c2);
+            let (b0, b1, b2) = (b.c0, b.c1, b.c2);
+            let v0 = a0 * b0;
+            let v1 = (a0 + a1 + a2) * (b0 + b1 + b2);
+            let v2 = (a0 - a1 + a2) * (b0 - b1 + b2);
+            let v3 = (a0 + Fq2::from(2) * a1 + Fq2::from(4) * a2)
+                * (b0 + Fq2::from(2) * b1 + Fq2::from(4) * b2);
+            let v4 = a2 * b2;
+            let x = Fq2::from(3) * v0 - Fq2::from(3) * v1 - v2 + v3 - Fq2::from(12) * v4;
+            let c0 = Fq2::from(6) * v0 + x * Fq6Config::NONRESIDUE;
+            debug!("c0: {:?}", c0 / Fq2::from(6));
+            debug!("v0: {:?}", v0);
+            debug!("v1: {:?}", v1);
+            debug!("v2: {:?}", v2);
+            debug!("v3: {:?}", v3);
+            debug!("v4: {:?}", v4);
+        }
+
+        // check result
+        let a = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
+        let b = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
+
+        let c = a * b;
+        for (idx, (node, cx)) in vec![c0, c1, c2]
+            .into_iter()
+            .zip(vec![c.c0, c.c1, c.c2].into_iter())
+            .enumerate()
+        {
+            let state = get_state(&ctx, &node.name);
+            info!("name: {}, c{}: {:?}", node.name, idx, state);
+            assert_eq!(state.get_fq2(), cx);
+        }
+        info!("v0: {:?}", get_state(&ctx, "test_v0"));
+        info!("v1: {:?}", get_state(&ctx, "test_v1"));
+        info!("v2: {:?}", get_state(&ctx, "test_v2"));
+        info!("v3: {:?}", get_state(&ctx, "test_v3"));
+        info!("v4: {:?}", get_state(&ctx, "test_v4"));
     }
 }
