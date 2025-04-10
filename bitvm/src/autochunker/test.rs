@@ -131,7 +131,17 @@ fn main_test() {
             let (t3_c0, t3_c1, t2_c0, t2_c1) = evaluate_t2_and_t3(&mut ctx, &p3_tweak, &p2_tweak);
 
             // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
-            // let eval_multi = line_evaluate_multiplication();
+            let eval_multi = line_evaluate_multiplication(
+                &mut ctx.inner_context("square_eval"),
+                &t4_c0,
+                &t4_c1,
+                &t3_c0,
+                &t3_c1,
+                &t2_c0,
+                &t2_c1,
+            );
+
+            // (f0, f1, f2) = (f0, f1, f2) * (eval_multi);
         }
     }
     /*

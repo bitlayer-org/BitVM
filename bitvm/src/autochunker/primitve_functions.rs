@@ -338,7 +338,7 @@ pub fn fq2_mul_lc4() -> (ComputeFn, ScriptFn) {
     )
 }
 
-pub fn mul_nonresidue() -> (ComputeFn, ScriptFn) {
+pub fn fq2_mul_nonresidue() -> (ComputeFn, ScriptFn) {
     (
         Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 1);
@@ -388,6 +388,19 @@ pub fn fq2_mul() -> (ComputeFn, ScriptFn) {
     )
 }
 
+pub fn fq2_sub() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 2);
+            let a = inputs[0].get_fq2();
+            let b = inputs[1].get_fq2();
+            let c = a - b;
+            State::Fq2(Some(c))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
 pub fn fq2_sub2() -> (ComputeFn, ScriptFn) {
     (
         Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
@@ -409,6 +422,20 @@ pub fn check_fq2_equal() -> (ComputeFn, ScriptFn) {
             let a = inputs[0].get_fq2();
             let b = inputs[1].get_fq2();
             State::CheckValid(Some(a == b))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
+pub fn fq2_mul_by_constant(i: i32) -> (ComputeFn, ScriptFn) {
+    assert!(i < 10, "mul_by_constant, {} too large", i);
+    assert!(i > -10, "mul_by_constant, {} too small", i);
+    (
+        Box::new(move |_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 1);
+            let a = inputs[0].get_fq2();
+            let b = a * Fq2::from(i);
+            State::Fq2(Some(b))
         }),
         placeholder_script_fn(),
     )
