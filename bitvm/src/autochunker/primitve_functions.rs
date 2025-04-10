@@ -347,6 +347,29 @@ pub fn extract_eval_multi_f(index: usize) -> ComputeFn {
     })
 }
 
+pub fn extract_fd(index: usize, bit: i8) -> ComputeFn {
+    assert!(index < 3);
+    assert!(bit == -1 || bit == 1);
+    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
+        let f = Fq12::new(Fq6::from(1), compute_ctx.f.unwrap());
+        let d = if bit == -1 {
+            compute_ctx.c
+        } else {
+            compute_ctx.c_inv
+        };
+        let d = Fq12::new(Fq6::from(1), d);
+
+        let result = f * d;
+        let g = result.c1 / result.c0;
+
+        // update f
+        compute_ctx.f = Some(g.clone());
+
+        let select_array = [g.c0, g.c1, g.c2];
+        State::Fq2(Some(Fq2::from(select_array[index])))
+    })
+}
+
 pub fn fq2_mul_lc4() -> (ComputeFn, ScriptFn) {
     (
         Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {

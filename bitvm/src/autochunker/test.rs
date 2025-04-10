@@ -7,7 +7,8 @@ use std::time;
 use crate::autochunker::intermediate_state::*;
 use crate::autochunker::primitve_functions::*;
 use crate::autochunker::proof::*;
-
+use ark_bn254::Config as Bn254Config;
+use ark_ec::bn::BnConfig;
 use log::info;
 use paste::paste;
 
@@ -114,8 +115,9 @@ fn main_test() {
         define_input!(ctx, t4y, Fq2, extract_t4y());
         let (mut t4x, mut t4y) = (t4x, t4y);
 
-        let (mut f0, mut f1, mut f2) = (c_inv0, c_inv1, c_inv2);
-        for i in 1..65 {
+        let (mut f0, mut f1, mut f2) = (c_inv0.clone(), c_inv1.clone(), c_inv2.clone());
+
+        for i in (1..Bn254Config::ATE_LOOP_COUNT.len()).rev() {
             let mut ctx = ctx.inner_context(&format!("ate_loop_{}", i));
 
             // square f
@@ -153,93 +155,30 @@ fn main_test() {
                 [&eval_multi_f0, &eval_multi_f1, &eval_multi_f2],
             );
             (f0, f1, f2) = (eval_multi_f0, eval_multi_f1, eval_multi_f2);
+
+            // if ate bit is 1, we need to multiply the c, else we need to multiply the c_inv
+            let bit = Bn254Config::ATE_LOOP_COUNT[i];
+            let (d0, d1, d2) = if bit == -1 {
+                (&c0, &c1, &c2)
+            } else {
+                (&c_inv0, &c_inv1, &c_inv2)
+            };
+
+            // (fd0, fd1, fd2) = (f0, f1, f2) * (d0, d1, d2)
+            define_input!(ctx, fd0, Fq6, extract_fd(0, bit));
+            define_input!(ctx, fd1, Fq6, extract_fd(1, bit));
+            define_input!(ctx, fd2, Fq6, extract_fd(1, bit));
+            new_mul_fq12(
+                &mut ctx.inner_context("fd"),
+                [&f0, &f1, &f2],
+                [d0, d1, d2],
+                [&fd0, &fd1, &fd2],
+            );
+            (f0, f1, f2) = (fd0, fd1, fd2);
+
+            // if ate bit is 1, we need to add the point, else we need to subtract the point
         }
     }
-    /*
-
-    let p3 = msm_acc;
-    let p3_tweak = new_script(&mut graph, "p3_tweak".into(), 340301, vec![(&p3, G1_BYTES)]);
-
-    // 2.2 check c \cdot c_inv is the identity
-    // decompose c to "c0, c1, c2" and c_inv to "c_inv0, c_inv1, c_inv2"
-    let c0 = new_input(&mut graph, "c0".into());
-    let c1 = new_input(&mut graph, "c1".into());
-    let c2 = new_input(&mut graph, "c2".into());
-    let c_inv0 = new_script(&mut graph, "c_inv".into(), 1000, vec![(&c0, FQ2_BYTES)]);
-    let c_inv1 = new_script(&mut graph, "c_inv".into(), 1000, vec![(&c1, FQ2_BYTES)]);
-    let c_inv2 = new_script(&mut graph, "c_inv".into(), 1000, vec![(&c2, FQ2_BYTES)]);
-
-    // 2.3 assign c to accumulator
-    let (mut f0, mut f1, mut f2) = (c0, c1, c2);
-
-    let q4x = new_input(&mut graph, "q4x".into());
-    let q4y = new_input(&mut graph, "q4y".into());
-
-    let (mut t4x, mut t4y) = (q4x, q4y);
-
-    // loop of ATE_LOOP_COUNT
-    for i in 1..65 {
-        // square f
-        [f0, f1, f2] = new_square_fq6(&mut graph, format!("square_f_loop_{}", i), [&f0, &f1, &f2]);
-
-
-        // 2.4 caculation tangent line of t4
-        let lambda = new_input(&mut graph, format!("t4_lambda_in_loop_{}", i));
-        let v = new_input(&mut graph, format!("t4_v_in_loop_{}", i));
-        // t4y = t4x \cdot \lambda + v
-        let _check_tangent_line = new_script(
-            &mut graph,
-            format!("double_t4_check_line_through_point_in_loop_{}", i),
-            193429,
-            vec![(&t4x, FQ2_BYTES), (&lambda, FQ2_BYTES), (&v, FQ2_BYTES)],
-        );
-        // 3 \cdot t4x^2 \cdot \lambda = 2 \cdot y^2
-        let _check_slope_of_line = new_script(
-            &mut graph,
-            format!("t4_check_slope_of_line_in_loop_{}", i),
-            190871 + 137000,
-            vec![(&t4x, FQ2_BYTES), (&t4y, FQ2_BYTES), (&lambda, FQ2_BYTES)],
-        );
-        // t4 = 2 (t4), double the point
-        // t4x' = \lambda^2 - 2 \cdot t4x, t4y' = -b - \lambda * t4x'
-        t4x = new_script(
-            &mut graph,
-            format!("t4x_double_in_loop_{}", i),
-            137000,
-            vec![(&t4x, FQ2_BYTES), (&lambda, FQ2_BYTES)],
-        );
-        t4y = new_script(
-            &mut graph,
-            format!("t4y_double_in_loop_{}", i),
-            190871,
-            vec![(&t4x, FQ2_BYTES), (&lambda, FQ2_BYTES), (&v, FQ2_BYTES)],
-        );
-        // evaluate the point by the line (divisor)
-        let evaluate_t4_line = new_script(
-            &mut graph,
-            format!("double_evaluate_t4_in_loop_{}", i),
-            271496,
-            vec![(&p4_tweak, G1_BYTES), (&lambda, FQ2_BYTES), (&v, FQ2_BYTES)],
-        );
-
-        // 2.5 evaluate line of t3, whose slope and bias is fixed.
-        // evaluate the point by the line (divisor)
-        let evaluate_t3_line = new_script(
-            &mut graph,
-            format!("double_evaluate_t4_in_loop_{}", i),
-            271496,
-            vec![(&p3_tweak, G1_BYTES)],
-        );
-
-        // 2.6 evaluate line of t2, whose slope and bias is fixed.
-        let evaluate_t2_line = new_script(
-            &mut graph,
-            format!("double_evaluate_t4_in_loop_{}", i),
-            271496,
-            vec![(&p3_tweak, G1_BYTES)],
-        );
-    }
-    */
 
     let time = time::Instant::now();
 
