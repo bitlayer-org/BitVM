@@ -41,7 +41,7 @@ pub fn new_mul_fq12(
 
     // check (rc0, rc1, rc2) == (ab0, ab1, ab2)
     define_script!(ctx, _check0, CheckValid, [rc0, ab0], check_fq2_equal());
-    define_script!(ctx, _check1, CheckValid, [rc1, ab2], check_fq2_equal());
+    define_script!(ctx, _check1, CheckValid, [rc1, ab1], check_fq2_equal());
     define_script!(ctx, _check2, CheckValid, [rc2, ab2], check_fq2_equal());
 }
 
@@ -747,28 +747,39 @@ mod tests {
     use crate::autochunker::computation_graph::{
         compute_states, new_input, BitVMNode, GraphContext,
     };
-    use crate::autochunker::functions::{double_by_tangent_line, new_mul_fq6, new_square_fq6};
+    use crate::autochunker::functions::{
+        double_by_tangent_line, new_mul_fq12, new_mul_fq6, new_square_fq6,
+    };
     use crate::autochunker::intermediate_state::State;
     use crate::autochunker::primitve_functions::ComputeCtx;
     use crate::autochunker::proof::RawProof;
     use crate::{define_input, define_overide_script, define_script};
-    use ark_bn254::{Fq2, Fq6, Fq6Config, G1Affine};
+    use ark_bn254::{Fq, Fq12, Fq2, Fq6, Fq6Config, G1Affine};
     use ark_ec::AffineRepr;
     use ark_ff::Fp6Config;
     use ark_ff::{AdditiveGroup, Field};
-    use log::{debug, info};
+    use graphrs::Graph;
+    use log::{debug, info, warn};
     use std::ffi::CStr;
     use std::ops::*;
     use std::os::raw::c_char;
 
-    fn new_fq2_1(ctx: &mut GraphContext) -> BitVMNode {
+    fn new_fq2(ctx: &mut GraphContext, x: Fq2) -> BitVMNode {
         define_input!(
             ctx,
             _o,
             Fq2,
-            Box::new(|_: &mut ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
+            Box::new(move |_: &mut ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(x))))
         );
         _o
+    }
+
+    fn new_fq6(ctx: &mut GraphContext, x: Fq6) -> [BitVMNode; 3] {
+        [
+            new_fq2(&mut ctx.inner_context("c0"), x.c0),
+            new_fq2(&mut ctx.inner_context("c1"), x.c1),
+            new_fq2(&mut ctx.inner_context("c2"), x.c2),
+        ]
     }
 
     fn new_g1(ctx: &mut GraphContext) -> BitVMNode {
@@ -799,12 +810,29 @@ mod tests {
         state
     }
 
+    fn show_all_states(ctx: &GraphContext) {
+        let lock_guard = ctx.graph.lock().unwrap();
+        for name in lock_guard.get_all_node_names() {
+            let node = lock_guard.get_node(name.to_string()).unwrap();
+            let state = node.attributes.clone().unwrap().state;
+            match state {
+                State::CheckValid(Some(x)) => {
+                    if !x {
+                        warn!("{} state: {:?}", name, state);
+                    }
+                }
+                _ => {
+                    info!("{} state: {:?}", name, state);
+                }
+            }
+        }
+    }
+
     #[test_log::test]
     fn test_square_fq6() {
         let mut ctx = GraphContext::new("test");
-        let a0 = new_fq2_1(&mut ctx.inner_context("a0"));
-        let a1 = new_fq2_1(&mut ctx.inner_context("a1"));
-        let a2 = new_fq2_1(&mut ctx.inner_context("a2"));
+        let a = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
+        let [a0, a1, a2] = new_fq6(&mut ctx, a);
         let [c0, c1, c2] = new_square_fq6(&mut ctx, [&a0, &a1, &a2]);
         // compute states
         let mut compute_ctx = RawProof::mock_proof().into();
@@ -830,12 +858,10 @@ mod tests {
         let mut ctx = GraphContext::new("test");
         {
             // graph
-            let a0 = new_fq2_1(&mut ctx.inner_context("a0"));
-            let a1 = new_fq2_1(&mut ctx.inner_context("a1"));
-            let a2 = new_fq2_1(&mut ctx.inner_context("a2"));
-            let b0 = new_fq2_1(&mut ctx.inner_context("b0"));
-            let b1 = new_fq2_1(&mut ctx.inner_context("b1"));
-            let b2 = new_fq2_1(&mut ctx.inner_context("b2"));
+            let a = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
+            let b = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
+            let [a0, a1, a2] = new_fq6(&mut ctx.inner_context("a"), a);
+            let [b0, b1, b2] = new_fq6(&mut ctx.inner_context("b"), b);
             let [c0, c1, c2] = new_mul_fq6(&mut ctx, [&a0, &a1, &a2], [&b0, &b1, &b2]);
             // compute states
             let mut compute_ctx = RawProof::mock_proof().into();
@@ -861,34 +887,52 @@ mod tests {
         }
 
         // computation process
+        {
+            let a = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
+            let b = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
+            let (a0, a1, a2) = (a.c0, a.c1, a.c2);
+            let (b0, b1, b2) = (b.c0, b.c1, b.c2);
+            let v0 = a0 * b0;
+            let k = a0.mul(b0);
+            let v1 = (a0 + a1 + a2) * (b0 + b1 + b2);
+            let v2 = (a0 - a1 + a2) * (b0 - b1 + b2);
+            let v3 = (a0 + Fq2::from(2) * a1 + Fq2::from(4) * a2)
+                * (b0 + Fq2::from(2) * b1 + Fq2::from(4) * b2);
+            let v4 = a2 * b2;
+            let x = Fq2::from(3) * v0 - Fq2::from(3) * v1 - v2 + v3 - Fq2::from(12) * v4;
+            let c0 = Fq2::from(6) * v0 + x * Fq6Config::NONRESIDUE;
+            info!("c0: {:?}", c0 / Fq2::from(6));
+            info!("v0: {:?}", v0);
+            info!("v1: {:?}", v1);
+            info!("v2: {:?}", v2);
+            info!("v3: {:?}", v3);
+            info!("v4: {:?}", v4);
+            info!("v3_l: {:?}", a0 + Fq2::from(2) * a1 + Fq2::from(4) * a2);
+            info!("v3_r: {:?}", b0 + Fq2::from(2) * b1 + Fq2::from(4) * b2);
+        }
+
+        show_all_states(&ctx);
+    }
+
+    #[test_log::test]
+    fn test_mul_fq12() {
+        let mut ctx = GraphContext::new("test");
         let a = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
         let b = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
-        let (a0, a1, a2) = (a.c0, a.c1, a.c2);
-        let (b0, b1, b2) = (b.c0, b.c1, b.c2);
-        let v0 = a0 * b0;
-        let k = a0.mul(b0);
-        let v1 = (a0 + a1 + a2) * (b0 + b1 + b2);
-        let v2 = (a0 - a1 + a2) * (b0 - b1 + b2);
-        let v3 = (a0 + Fq2::from(2) * a1 + Fq2::from(4) * a2)
-            * (b0 + Fq2::from(2) * b1 + Fq2::from(4) * b2);
-        let v4 = a2 * b2;
-        let x = Fq2::from(3) * v0 - Fq2::from(3) * v1 - v2 + v3 - Fq2::from(12) * v4;
-        let c0 = Fq2::from(6) * v0 + x * Fq6Config::NONRESIDUE;
-        info!("c0: {:?}", c0 / Fq2::from(6));
-        info!("v0: {:?}", v0);
-        info!("v1: {:?}", v1);
-        info!("v2: {:?}", v2);
-        info!("v3: {:?}", v3);
-        info!("v4: {:?}", v4);
-        info!("v3_l: {:?}", a0 + Fq2::from(2) * a1 + Fq2::from(4) * a2);
-        info!("v3_r: {:?}", b0 + Fq2::from(2) * b1 + Fq2::from(4) * b2);
+        let c = Fq12::new(Fq6::from(1), a) * Fq12::new(Fq6::from(1), b);
+        let c = c.c1 / c.c0;
 
-        info!("v0: {:?}", get_state(&ctx, "test_v0"));
-        info!("v1: {:?}", get_state(&ctx, "test_v1"));
-        info!("v2: {:?}", get_state(&ctx, "test_v2"));
-        info!("v3: {:?}", get_state(&ctx, "test_v3"));
-        info!("v4: {:?}", get_state(&ctx, "test_v4"));
-        info!("v3_l: {:?}", get_state(&ctx, "test_v3_l"));
-        info!("v3_r: {:?}", get_state(&ctx, "test_v3_r"));
+        let [a0, a1, a2] = new_fq6(&mut ctx.inner_context("a"), a);
+        let [b0, b1, b2] = new_fq6(&mut ctx.inner_context("b"), b);
+        let [c0, c1, c2] = new_fq6(&mut ctx.inner_context("c"), c);
+
+        new_mul_fq12(&mut ctx, [&a0, &a1, &a2], [&b0, &b1, &b2], [&c0, &c1, &c2]);
+
+        // compute states
+        let mut compute_ctx = RawProof::mock_proof().into();
+        compute_states(&ctx, &mut compute_ctx);
+
+        // check result
+        show_all_states(&ctx);
     }
 }
