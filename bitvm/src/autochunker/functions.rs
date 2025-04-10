@@ -6,14 +6,43 @@ use ark_ff::{Field, Fp6Config};
 use serde::de;
 use std::ops::Neg;
 
+// check a * b is equal to c
 pub fn new_mul_fq12(
     ctx: &mut GraphContext,
     a: [&BitVMNode; 3],
     b: [&BitVMNode; 3],
-) -> [BitVMNode; 3] {
+    c: [&BitVMNode; 3],
+) {
     let (a0, a1, a2) = (a[0], a[1], a[2]);
     let (b0, b1, b2) = (b[0], b[1], b[2]);
-    todo!()
+    let (c0, c1, c2) = (c[0], c[1], c[2]);
+
+    define_script!(ctx, ab0, Fq2, [a0, b0], fq2_add()); // ab0 = a0 + b0
+    define_script!(ctx, ab1, Fq2, [a1, b1], fq2_add()); // ab1 = a1 + b1
+    define_script!(ctx, ab2, Fq2, [a2, b2], fq2_add()); // ab2 = a2 + b2
+
+    // (v0, v1, v2) = (a0, a1, a2) * (b0, b1, b2)
+    let [v0, v1, v2] = new_mul_fq6(
+        &mut ctx.inner_context("axb"),
+        [&a0, &a1, &a2],
+        [&b0, &b1, &b2],
+    );
+    // (r0, r1, r2) = (v0, v1, v2) * \beta + 1
+    define_script!(ctx, v2_tweak, Fq2, [v2], fq2_mul_nonresidue());
+    define_script!(ctx, r0, Fq2, [v2_tweak], fq2_plus_one());
+    let (r1, r2) = (v0, v1);
+
+    // (rc0, rc1, rc2) = (r0, r1, r2) * (c0, c1, c2)
+    let [rc0, rc1, rc2] = new_mul_fq6(
+        &mut ctx.inner_context("rxc"),
+        [&r0, &r1, &r2],
+        [&c0, &c1, &c2],
+    );
+
+    // check (rc0, rc1, rc2) == (ab0, ab1, ab2)
+    define_script!(ctx, _check0, CheckValid, [rc0, ab0], check_fq2_equal());
+    define_script!(ctx, _check1, CheckValid, [rc1, ab2], check_fq2_equal());
+    define_script!(ctx, _check2, CheckValid, [rc2, ab2], check_fq2_equal());
 }
 
 /// three input each which is fq2
@@ -573,7 +602,7 @@ pub fn constant_line_evaluate_c1(
 }
 
 // outputs: t3_c0, t3_c1, t2_c0, t2_c1
-pub fn evaluate_t2_and_t3(
+pub fn evaluate_tangent_t2_and_t3(
     ctx: &mut GraphContext,
     p3_tweak: &BitVMNode,
     p2_tweak: &BitVMNode,

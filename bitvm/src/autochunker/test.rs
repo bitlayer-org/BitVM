@@ -127,8 +127,9 @@ fn main_test() {
             (t4x, t4y) = (res.0, res.1);
             let (t4_c0, t4_c1) = (res.2, res.3);
 
-            // evaluate t2 and t3 by precomputed tagent line
-            let (t3_c0, t3_c1, t2_c0, t2_c1) = evaluate_t2_and_t3(&mut ctx, &p3_tweak, &p2_tweak);
+            // evaluate t2 and t3 by precomputed tangent line
+            let (t3_c0, t3_c1, t2_c0, t2_c1) =
+                evaluate_tangent_t2_and_t3(&mut ctx, &p3_tweak, &p2_tweak);
 
             // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
             let eval_multi = line_evaluate_multiplication(
@@ -141,7 +142,17 @@ fn main_test() {
                 &t2_c1,
             );
 
-            // (f0, f1, f2) = (f0, f1, f2) * (eval_multi);
+            // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
+            define_input!(ctx, eval_multi_f0, Fq6, extract_eval_multi_f(0));
+            define_input!(ctx, eval_multi_f1, Fq6, extract_eval_multi_f(1));
+            define_input!(ctx, eval_multi_f2, Fq6, extract_eval_multi_f(2));
+            new_mul_fq12(
+                &mut ctx.inner_context("eval_multi"),
+                [&f0, &f1, &f2],
+                [&eval_multi.0, &eval_multi.1, &eval_multi.2],
+                [&eval_multi_f0, &eval_multi_f1, &eval_multi_f2],
+            );
+            (f0, f1, f2) = (eval_multi_f0, eval_multi_f1, eval_multi_f2);
         }
     }
     /*

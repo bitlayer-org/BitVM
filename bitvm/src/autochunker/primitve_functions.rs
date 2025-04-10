@@ -46,6 +46,7 @@ pub struct ComputeCtx {
     pub evaluate_p3: Option<Fq6>, // mutable, the result of evaluate line of p3
     pub evaluate_p2: Option<Fq6>, // mutable, the result of evaluate line of p2
     pub c: Fq6,
+    pub c_inv: Fq6,
 }
 
 impl From<RawProof> for ComputeCtx {
@@ -123,12 +124,13 @@ impl From<RawProof> for ComputeCtx {
             p2: p2,
             p4: p4,
             c: c.c1 / c.c0,
+            c_inv: c_inv.c1 / c_inv.c0,
             t4: q4,
             t3: q3,
             t2: q2,
             q3: q3,
             q2: q2,
-            f: None,
+            f: Some(c_inv.c1 / c_inv.c0),
             evaluate_p4: None,
             evaluate_p3: None,
             evaluate_p2: None,
@@ -316,8 +318,30 @@ pub fn extract_line_evaluation_g(index: usize) -> ComputeFn {
         let evaluate_p2 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p2.unwrap());
         let evaluate_p3 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p3.unwrap());
         let evaluate_p4 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p4.unwrap());
+
         let result = evaluate_p2 * evaluate_p3 * evaluate_p4;
         let g = result.c1 / result.c0;
+        let select_array = [g.c0, g.c1, g.c2];
+        State::Fq2(Some(Fq2::from(select_array[index])))
+    })
+}
+
+pub fn extract_eval_multi_f(index: usize) -> ComputeFn {
+    assert!(index < 3);
+    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
+        let evaluate_p2 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p2.unwrap());
+        let evaluate_p3 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p3.unwrap());
+        let evaluate_p4 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p4.unwrap());
+        let evaluations = evaluate_p2 * evaluate_p3 * evaluate_p4;
+
+        let f = Fq12::new(Fq6::from(1), compute_ctx.f.unwrap());
+
+        let result = f * evaluations;
+        let g = result.c1 / result.c0;
+
+        // update f
+        compute_ctx.f = Some(g.clone());
+
         let select_array = [g.c0, g.c1, g.c2];
         State::Fq2(Some(Fq2::from(select_array[index])))
     })
