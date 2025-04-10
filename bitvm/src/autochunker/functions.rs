@@ -178,6 +178,231 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
     [c0.clone(), c1.clone(), c2.clone()]
 }
 
+fn new_mul_fq6(ctx: &mut GraphContext, a: [&BitVMNode; 3], b: [&BitVMNode; 3]) -> [BitVMNode; 3] {
+    let (a0, a1, a2) = (a[0], a[1], a[2]);
+    let (b0, b1, b2) = (b[0], b[1], b[2]);
+    // v0 = a0 * b0
+    define_script!(
+        ctx,
+        v0,
+        Fq2,
+        [a0, b0],
+        (
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+                assert!(inputs.len() == 2);
+                let a0 = inputs[0].get_fq2();
+                let b0 = inputs[1].get_fq2();
+                let v0 = a0 * b0;
+                State::Fq2(Some(v0))
+            }),
+            placeholder_script_fn()
+        )
+    );
+
+    // v1 = (a0 + a1 + a2) * (b0 + b1 + b2)
+    define_script!(
+        ctx,
+        v1,
+        Fq2,
+        [a0, a1, a2, b0, b1, b2],
+        (
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+                assert!(inputs.len() == 6);
+                let a0 = inputs[0].get_fq2();
+                let a1 = inputs[1].get_fq2();
+                let a2 = inputs[2].get_fq2();
+                let b0 = inputs[3].get_fq2();
+                let b1 = inputs[4].get_fq2();
+                let b2 = inputs[5].get_fq2();
+                let v1 = (a0 + a1 + a2) * (b0 + b1 + b2);
+                State::Fq2(Some(v1))
+            }),
+            placeholder_script_fn()
+        )
+    );
+
+    // v2 = (a0 - a1 + a2) * (b0 - b1 + b2)
+    define_script!(
+        ctx,
+        v2,
+        Fq2,
+        [a0, a1, a2, b0, b1, b2],
+        (
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+                assert!(inputs.len() == 6);
+                let a0 = inputs[0].get_fq2();
+                let a1 = inputs[1].get_fq2();
+                let a2 = inputs[2].get_fq2();
+                let b0 = inputs[3].get_fq2();
+                let b1 = inputs[4].get_fq2();
+                let b2 = inputs[5].get_fq2();
+                let v2 = (a0 - a1 + a2) * (b0 - b1 + b2);
+                State::Fq2(Some(v2))
+            }),
+            placeholder_script_fn()
+        )
+    );
+
+    // v3 = (a0 + 2a1 + 3a2) * (b0 + 2b1 + 3b2)
+    define_script!(
+        ctx,
+        v3,
+        Fq2,
+        [a0, a1, a2, b0, b1, b2],
+        (
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+                assert!(inputs.len() == 6);
+                let a0 = inputs[0].get_fq2();
+                let a1 = inputs[1].get_fq2();
+                let a2 = inputs[2].get_fq2();
+                let b0 = inputs[3].get_fq2();
+                let b1 = inputs[4].get_fq2();
+                let b2 = inputs[5].get_fq2();
+                let v3 = (a0 + a1 + a1 + a2 + a2 + a2) * (b0 + b1 + b1 + b2 + b2 + b2);
+                State::Fq2(Some(v3))
+            }),
+            placeholder_script_fn()
+        )
+    );
+
+    // v4 = a2 + b2
+    define_script!(
+        ctx,
+        v4,
+        Fq2,
+        [a2, b2],
+        (
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+                assert!(inputs.len() == 2);
+                let a2 = inputs[0].get_fq2();
+                let b2 = inputs[1].get_fq2();
+                let v4 = a2 + b2;
+                State::Fq2(Some(v4))
+            }),
+            placeholder_script_fn()
+        )
+    );
+
+    // x = 3v0 - 3v1 - v2 + v3 - 12v4
+    define_script!(
+        ctx,
+        x,
+        Fq2,
+        [v0, v1, v2, v3, v4],
+        (
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+                assert!(inputs.len() == 5);
+                let v0 = inputs[0].get_fq2();
+                let v1 = inputs[1].get_fq2();
+                let v2 = inputs[2].get_fq2();
+                let v3 = inputs[3].get_fq2();
+                let v4 = inputs[4].get_fq2();
+                let x = v0 * Fq2::from(3) - v1 * Fq2::from(3) - v2 + v3 - v4 * Fq2::from(12);
+                State::Fq2(Some(x))
+            }),
+            placeholder_script_fn()
+        )
+    );
+
+    // c0 = 6v0 + \beta x
+    define_script!(ctx, x_tweak, Fq2, [x], mul_nonresidue());
+    define_script!(
+        ctx,
+        c0,
+        Fq2,
+        [v0, x_tweak],
+        (
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+                assert!(inputs.len() == 2);
+                let v0 = inputs[0].get_fq2();
+                let x_tweak = inputs[1].get_fq2();
+                let c0 = v0 * Fq2::from(6) + x_tweak;
+                State::Fq2(Some(c0))
+            }),
+            placeholder_script_fn()
+        )
+    );
+
+    // y = -3v0 + 6v1 - 2v2 - v3 + 12v4
+    define_script!(
+        ctx,
+        y,
+        Fq2,
+        [v0, v1, v2, v3, v4],
+        (
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+                assert!(inputs.len() == 5);
+                let v0 = inputs[0].get_fq2();
+                let v1 = inputs[1].get_fq2();
+                let v2 = inputs[2].get_fq2();
+                let v3 = inputs[3].get_fq2();
+                let v4 = inputs[4].get_fq2();
+                let y = -v0 * Fq2::from(3) + v1 * Fq2::from(6) - v2 * Fq2::from(2) - v3
+                    + v4 * Fq2::from(12);
+                State::Fq2(Some(y))
+            }),
+            placeholder_script_fn()
+        )
+    );
+
+    // c1 = y + \beta 6v4
+    define_script!(
+        ctx,
+        v4_times_6,
+        Fq2,
+        [v4],
+        (
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+                assert!(inputs.len() == 1);
+                let v4 = inputs[0].get_fq2();
+                let c1 = v4 * Fq2::from(6);
+                State::Fq2(Some(c1))
+            }),
+            placeholder_script_fn()
+        )
+    );
+    define_script!(ctx, v4_tweak, Fq2, [v4_times_6], mul_nonresidue());
+    define_script!(ctx, c1, Fq2, [y, v4_tweak], fq2_add());
+
+    // c2 = 3v1 - 6v0 + 3v2 - 6v4
+    define_script!(
+        ctx,
+        c2,
+        Fq2,
+        [v0, v1, v2, v4],
+        (
+            Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+                assert!(inputs.len() == 4);
+                let v0 = inputs[0].get_fq2();
+                let v1 = inputs[1].get_fq2();
+                let v2 = inputs[2].get_fq2();
+                let v4 = inputs[3].get_fq2();
+                let c2 =
+                    v1 * Fq2::from(3) - v0 * Fq2::from(6) + v2 * Fq2::from(3) - v4 * Fq2::from(6);
+                State::Fq2(Some(c2))
+            }),
+            placeholder_script_fn()
+        )
+    );
+
+    // c0/6, c1/6, c2/6
+    define_script!(ctx, c0_tweak, Fq2, [c0], fq2_div6());
+    define_script!(ctx, c1_tweak, Fq2, [c1], fq2_div6());
+    define_script!(ctx, c2_tweak, Fq2, [c2], fq2_div6());
+
+    [c0_tweak, c1_tweak, c2_tweak]
+}
+
+fn fq2_div6() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert!(inputs.len() == 1);
+        let c0 = inputs[0].get_fq2();
+        let c0_tweak = c0 / Fq2::from(6);
+        State::Fq2(Some(c0_tweak))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+
 // the BN254 curve is represented by Y^2 = X^3 + aX + b, where b = 3 and a = 0
 // For D-type twist (BN254), y^2 = x^3 + b / w^6
 // mapping from BN254 to twisted-BN254: x -> x / w and y -> y / w^3
@@ -552,7 +777,8 @@ fn line_evaluate_multiplication(
     // (m0, m1, m2) = (s0, s1, s2) * mul_fq6_by_nonresidue + 1
     //              = (s2 * (9+u), s0, s1) + 1
     //              = (s2 * (9+u) + 1, s0, s1)
-    define_script!(ctx, m0, Fq2, [s2], mul_nonresidue_plus_one());
+    define_script!(ctx, s2_tweak, Fq2, [s2], mul_nonresidue());
+    define_script!(ctx, m0, Fq2, [s2_tweak], fq2_plus_one());
     let (m1, m2) = (s0, s1);
     //
     // step 2:
@@ -575,7 +801,8 @@ fn line_evaluate_multiplication(
     // (h0, h1, h2) = (e0, e1, e2) * mul_fq6_by_nonresidue + 1
     //             = (e2 * (9+u), e0, e1) + 1
     //             = (e2 * (9+u) + 1, e0, e1)
-    define_script!(ctx, h0, Fq2, [e2], mul_nonresidue_plus_one());
+    define_script!(ctx, e2_tweak, Fq2, [e2], mul_nonresidue());
+    define_script!(ctx, h0, Fq2, [e2_tweak], fq2_plus_one());
     let (h1, h2) = (e0, e1);
     //
     // step 3:
@@ -609,9 +836,8 @@ fn line_evaluate_multiplication(
     define_input!(ctx, g2, Fq2, extract_line_evaluation_g(2));
     //
     // check if (g0, g1, g2) * (mh0, mh1, mh2) == (dk0, dk1, dk2)
-    // TODO:
+    let [x0, x1, x2] = new_mul_fq6(ctx, [&g0, &g1, &g2], [&mh0, &mh1, &mh2]);
     /*
-    let (x0, x1, x2) = fq6_mul(g0, g1, g2, mh0, mh1, mh2);
     define_script!(ctx, _check_mul_x0, CheckValid, [x0, dk0], check_fq2_equal());
     define_script!(ctx, _check_mul_x1, CheckValid, [x1, dk1], check_fq2_equal());
     define_script!(ctx, _check_mul_x2, CheckValid, [x2, dk2], check_fq2_equal());
@@ -660,12 +886,12 @@ fn mul_nonresidue() -> (ComputeFn, ScriptFn) {
     )
 }
 
-fn mul_nonresidue_plus_one() -> (ComputeFn, ScriptFn) {
+fn fq2_plus_one() -> (ComputeFn, ScriptFn) {
     (
         Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 1);
             let a = inputs[0].get_fq2();
-            let b = a * Fq6Config::NONRESIDUE + Fq2::from(1);
+            let b = a + Fq2::from(1);
             State::Fq2(Some(b))
         }),
         placeholder_script_fn(),
@@ -714,7 +940,9 @@ fn fq2_sub2() -> (ComputeFn, ScriptFn) {
 
 #[cfg(test)]
 mod tests {
-    use crate::autochunker::computation_graph::{compute_states, new_input, GraphContext};
+    use crate::autochunker::computation_graph::{
+        compute_states, new_input, BitVMNode, GraphContext,
+    };
     use crate::autochunker::functions::new_square_fq6;
     use crate::autochunker::intermediate_state::State;
     use crate::autochunker::primitve_functions::ComputeCtx;
@@ -724,31 +952,27 @@ mod tests {
     use ark_ff::Field;
     use log::info;
 
+    fn new_fq2_1(ctx: &mut GraphContext) -> BitVMNode {
+        define_input!(
+            ctx,
+            x,
+            Fq2,
+            Box::new(|_: &mut ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
+        );
+        x
+    }
+
     #[test_log::test]
     fn test_square_fq6() {
         let mut ctx = GraphContext::new("test");
-        define_input!(
-            ctx,
-            a0,
-            Fq2,
-            Box::new(|_: &mut ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
-        );
-        define_input!(
-            ctx,
-            a1,
-            Fq2,
-            Box::new(|_: &mut ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
-        );
-        define_input!(
-            ctx,
-            a2,
-            Fq2,
-            Box::new(|_: &mut ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(1))))
-        );
-
+        let a0 = new_fq2_1(&mut ctx);
+        let a1 = new_fq2_1(&mut ctx);
+        let a2 = new_fq2_1(&mut ctx);
         let [c0, c1, c2] = new_square_fq6(&mut ctx, [&a0, &a1, &a2]);
+        // compute states
         let mut compute_ctx = RawProof::mock_proof().into();
         compute_states(&ctx, &mut compute_ctx);
+        // check result
         let lock_guard = ctx.graph.lock().unwrap();
         let a = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
         let c = a.square();
