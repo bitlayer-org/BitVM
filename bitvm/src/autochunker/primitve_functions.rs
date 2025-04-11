@@ -451,15 +451,35 @@ pub fn fq2_sub() -> (ComputeFn, ScriptFn) {
 pub fn fq2_sub2() -> (ComputeFn, ScriptFn) {
     (
         Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
-            assert!(inputs.len() == 2);
+            assert!(inputs.len() == 3);
             let a = inputs[0].get_fq2();
             let b = inputs[1].get_fq2();
-            let c = inputs[1].get_fq2();
+            let c = inputs[2].get_fq2();
             let d = a - b - c;
             State::Fq2(Some(d))
         }),
         placeholder_script_fn(),
     )
+}
+
+pub fn fq2_div6() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert!(inputs.len() == 1);
+        let c0 = inputs[0].get_fq2();
+        let c0_tweak = c0 / Fq2::from(6);
+        State::Fq2(Some(c0_tweak))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+
+pub fn fq2_div2() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert!(inputs.len() == 1);
+        let c0 = inputs[0].get_fq2();
+        let c0_tweak = c0 / Fq2::from(2);
+        State::Fq2(Some(c0_tweak))
+    };
+    (Box::new(func), placeholder_script_fn())
 }
 
 pub fn check_fq2_equal() -> (ComputeFn, ScriptFn) {
@@ -482,6 +502,18 @@ pub fn fq2_mul_by_constant(i: i32) -> (ComputeFn, ScriptFn) {
             assert!(inputs.len() == 1);
             let a = inputs[0].get_fq2();
             let b = a * Fq2::from(i);
+            State::Fq2(Some(b))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
+pub fn fq2_square() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 1);
+            let a = inputs[0].get_fq2();
+            let b = a.square();
             State::Fq2(Some(b))
         }),
         placeholder_script_fn(),

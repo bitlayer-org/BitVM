@@ -130,8 +130,11 @@ fn main_test() {
             let (t4_c0, t4_c1) = (res.2, res.3);
 
             // evaluate t2 and t3 by precomputed tangent line
-            let (t3_c0, t3_c1, t2_c0, t2_c1) =
-                evaluate_tangent_t2_and_t3(&mut ctx, &p3_tweak, &p2_tweak);
+            let (t3_c0, t3_c1, t2_c0, t2_c1) = evaluate_tangent_t2_and_t3(
+                &mut ctx.inner_context("double_t2_t3"),
+                &p3_tweak,
+                &p2_tweak,
+            );
 
             // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
             let eval_multi = line_evaluate_multiplication(
