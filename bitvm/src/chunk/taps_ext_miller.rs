@@ -194,7 +194,7 @@ pub(crate) fn chunk_precompute_p_from_hash(
 }
 
 // Assumes (1 + f) is valid Fp12 i.e. f != Fq6::ZERO
-// power is in the range (0, 1, 2)
+// power is in the range (1, 2, 3)
 pub(crate) fn chunk_frob_fp12(
     f: ark_bn254::Fq6,
     power: usize,

@@ -26,7 +26,7 @@ fn main_test() {
     // Rename these varible by C = P2, \delta = Q2, P3 = P3, \gamma = Q3, A = P4, B = Q4
 
     // =========================================================================================================
-    let ctx = GraphContext::new("groth16_verifier");
+    let mut ctx = GraphContext::new("groth16_verifier");
     let p3 = {
         let mut ctx = ctx.inner_context("MSM");
 
@@ -82,42 +82,46 @@ fn main_test() {
     };
 
     // =========================================================================================================
+    //
+    // Phase 2: Pre Computing
 
-    // Phase 2: Pairing Computation
+    define_input!(ctx, p2, G1, extract_p2());
+    define_script!(ctx, _p2_check, CheckValid, [p2], check_g1_point());
+    define_script!(ctx, p2_tweak, G1, [p2], tweak_point());
+
+    define_input!(ctx, p4, G1, extract_p4());
+    define_script!(ctx, _p4_check, CheckValid, [p4], check_g1_point());
+    define_script!(ctx, p4_tweak, G1, [p4], tweak_point());
+
+    define_script!(ctx, p3_tweak, G1, [p3], tweak_point());
+
+    define_input!(ctx, q4x, Fq2, extract_q4x());
+    define_input!(ctx, q4y, Fq2, extract_q4y());
+    define_script!(ctx, q4y_neg, Fq2, [q4y], fq2_neg());
+
+    // saying c = 1 + a J, c_inv will be 1 - a J, because c * c_inv = (1+a^2) + 0 J = 1
+    // so we can use neg(c) to represent the inverse of c
+    define_input!(ctx, c0, Fq2, extract_c(0));
+    define_input!(ctx, c1, Fq2, extract_c(1));
+    define_input!(ctx, c2, Fq2, extract_c(2));
+    define_script!(ctx, c_inv0, Fq6, [c0], neg_fq2());
+    define_script!(ctx, c_inv1, Fq6, [c1], neg_fq2());
+    define_script!(ctx, c_inv2, Fq6, [c2], neg_fq2());
+
+    // define t4x and t4y
+    define_input!(ctx, t4x, Fq2, extract_t4x());
+    define_input!(ctx, t4y, Fq2, extract_t4y());
+    let (mut t4x, mut t4y) = (t4x, t4y);
+
+    // =========================================================================================================
+    //
+    // Phase 3: Pairing Computation
 
     // 2.1 precompute point in G1 for the optimization in https://eprint.iacr.org/2013/722.pdf
     // y_p' -> 1 / y_p, x_p' -> - y_p / x_p
     // chunk_precompute_p disprovable(true) script 340846 stack 654
-    {
+    let (mut f0, mut f1, mut f2) = {
         let mut ctx = ctx.inner_context("Pairing");
-
-        define_input!(ctx, p2, G1, extract_p2());
-        define_script!(ctx, _p2_check, CheckValid, [p2], check_g1_point());
-        define_script!(ctx, p2_tweak, G1, [p2], tweak_point());
-
-        define_input!(ctx, p4, G1, extract_p4());
-        define_script!(ctx, _p4_check, CheckValid, [p4], check_g1_point());
-        define_script!(ctx, p4_tweak, G1, [p4], tweak_point());
-
-        define_script!(ctx, p3_tweak, G1, [p3], tweak_point());
-
-        define_input!(ctx, q4x, Fq2, extract_q4x());
-        define_input!(ctx, q4y, Fq2, extract_q4y());
-        define_script!(ctx, q4y_neg, Fq2, [q4y], fq2_neg());
-
-        // saying c = 1 + a J, c_inv will be 1 - a J, because c * c_inv = (1+a^2) + 0 J = 1
-        // so we can use neg(c) to represent the inverse of c
-        define_input!(ctx, c0, Fq2, extract_c(0));
-        define_input!(ctx, c1, Fq2, extract_c(1));
-        define_input!(ctx, c2, Fq2, extract_c(2));
-        define_script!(ctx, c_inv0, Fq6, [c0], neg_fq2());
-        define_script!(ctx, c_inv1, Fq6, [c1], neg_fq2());
-        define_script!(ctx, c_inv2, Fq6, [c2], neg_fq2());
-
-        // define t4x and t4y
-        define_input!(ctx, t4x, Fq2, extract_t4x());
-        define_input!(ctx, t4y, Fq2, extract_t4y());
-        let (mut t4x, mut t4y) = (t4x, t4y);
 
         let (mut f0, mut f1, mut f2) = (c_inv0.clone(), c_inv1.clone(), c_inv2.clone());
 
@@ -152,16 +156,16 @@ fn main_test() {
             );
 
             // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
-            define_input!(ctx, eval_multi_f0, Fq6, extract_eval_multi_f(0));
-            define_input!(ctx, eval_multi_f1, Fq6, extract_eval_multi_f(1));
-            define_input!(ctx, eval_multi_f2, Fq6, extract_eval_multi_f(2));
+            define_input!(ctx, square_eval_f0, Fq6, extract_eval_multi_f(0));
+            define_input!(ctx, square_eval_f1, Fq6, extract_eval_multi_f(1));
+            define_input!(ctx, sqaure_eval_f2, Fq6, extract_eval_multi_f(2));
             new_mul_fq12(
                 &mut ctx.inner_context("eval_multi"),
                 [&f0, &f1, &f2],
                 [&eval_multi.0, &eval_multi.1, &eval_multi.2],
-                [&eval_multi_f0, &eval_multi_f1, &eval_multi_f2],
+                [&square_eval_f0, &square_eval_f1, &sqaure_eval_f2],
             );
-            (f0, f1, f2) = (eval_multi_f0, eval_multi_f1, eval_multi_f2);
+            (f0, f1, f2) = (square_eval_f0, square_eval_f1, sqaure_eval_f2);
 
             // if ate bit is 1, we need to multiply the c, else we need to multiply the c_inv
             let bit = Bn254Config::ATE_LOOP_COUNT[i];
@@ -194,7 +198,94 @@ fn main_test() {
                 &p3_tweak,
                 bit,
             );
+            (t4x, t4y) = (res.0, res.1);
+            let (t4_c0, t4_c1) = (res.2, res.3);
+
+            // evaluate t2 and t3 by precomputed chord line
+            let (t3_c0, t3_c1, t2_c0, t2_c1) = evaluate_chord_t2_and_t3(
+                &mut ctx.inner_context("double_t2_t3"),
+                &p3_tweak,
+                &p2_tweak,
+                bit,
+            );
+
+            // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
+            let eval_multi = line_evaluate_multiplication(
+                &mut ctx.inner_context("add_eval"),
+                &t4_c0,
+                &t4_c1,
+                &t3_c0,
+                &t3_c1,
+                &t2_c0,
+                &t2_c1,
+            );
+
+            // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
+            define_input!(ctx, add_eval_f0, Fq6, extract_eval_multi_f(0));
+            define_input!(ctx, add_eval_f1, Fq6, extract_eval_multi_f(1));
+            define_input!(ctx, add_eval_f2, Fq6, extract_eval_multi_f(2));
+            new_mul_fq12(
+                &mut ctx.inner_context("eval_multi"),
+                [&f0, &f1, &f2],
+                [&eval_multi.0, &eval_multi.1, &eval_multi.2],
+                [&add_eval_f0, &add_eval_f1, &add_eval_f2],
+            );
+            (f0, f1, f2) = (add_eval_f0, add_eval_f1, add_eval_f2);
         }
+        (f0, f1, f2)
+    };
+
+    // =========================================================================================================
+    //
+    // Phase 4: Final Computation
+
+    {
+        let mut ctx = ctx.inner_context("final");
+        // frobinus mapping: c_inv^p
+        let cinv_p = fq12_frobinus_map(&mut ctx.inner_context("p"), [&c_inv0, &c_inv1, &c_inv2], 1);
+        // froninus mapping: c^2p
+        let c_p2 = fq12_frobinus_map(&mut ctx.inner_context("2p"), [&c0, &c1, &c2], 2);
+        // forninus mapping: c_inv^3p
+        let cinv_p3 =
+            fq12_frobinus_map(&mut ctx.inner_context("3p"), [&c_inv0, &c_inv1, &c_inv2], 3);
+
+        // f = f * c_inv^p
+        define_input!(ctx, fp0, Fq6, extract_frob_multi(0, 1, use_neg));
+        define_input!(ctx, fp1, Fq6, extract_frob_multi(1, 1, use_neg));
+        define_input!(ctx, fp2, Fq6, extract_frob_multi(2, 1, use_neg));
+        new_mul_fq12(
+            &mut ctx.inner_context("fp"),
+            [&f0, &f1, &f2],
+            [&cinv_p[0], &cinv_p[1], &cinv_p[2]],
+            [&fp0, &fp1, &fp2],
+        );
+        (f0, f1, f2) = (fp0, fp1, fp2);
+
+        // f = f * c^2p
+        define_input!(ctx, f2p0, Fq6, extract_frob_multi(0, 2, use_pos));
+        define_input!(ctx, f2p1, Fq6, extract_frob_multi(1, 2, use_pos));
+        define_input!(ctx, f2p2, Fq6, extract_frob_multi(2, 2, use_pos));
+        new_mul_fq12(
+            &mut ctx.inner_context("f2p"),
+            [&f0, &f1, &f2],
+            [&c_p2[0], &c_p2[1], &c_p2[2]],
+            [&f2p0, &f2p1, &f2p2],
+        );
+        (f0, f1, f2) = (f2p0, f2p1, f2p2);
+
+        // f = f * c_inv^3p
+        define_input!(ctx, f3p0, Fq6, extract_frob_multi(0, 3, use_neg));
+        define_input!(ctx, f3p1, Fq6, extract_frob_multi(1, 3, use_neg));
+        define_input!(ctx, f3p2, Fq6, extract_frob_multi(2, 3, use_neg));
+        new_mul_fq12(
+            &mut ctx.inner_context("f3p"),
+            [&f0, &f1, &f2],
+            [&cinv_p3[0], &cinv_p3[1], &cinv_p3[2]],
+            [&f3p0, &f3p1, &f3p2],
+        );
+        (f0, f1, f2) = (f3p0, f3p1, f3p2);
+
+        //
     }
 
     let time = time::Instant::now();

@@ -2,7 +2,8 @@ use super::{computation_graph::*, intermediate_state::*, primitve_functions::*};
 use crate::{define_input, define_overide_script, define_script};
 use ark_bn254::{Fq12, Fq2, Fq6, Fq6Config, G2Affine};
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::{Field, Fp6Config};
+use ark_ff::{Field, Fp12Config, Fp6Config};
+use bitcoin::pow;
 use serde::de;
 use std::ops::Neg;
 
@@ -62,7 +63,7 @@ pub fn new_square_fq6(ctx: &mut GraphContext, inputs: [&BitVMNode; 3]) -> [BitVM
     define_script!(ctx, s2, Fq2, [a_sub], fq2_square());
 
     // s3 = 2 \cdot a_1 \cdot a_2
-    define_script!(ctx, a1_times_2, Fq2, [a1], fq2_mul_by_constant(2));
+    define_script!(ctx, a1_times_2, Fq2, [a1], fq2_mul_by_integer(2));
     define_script!(ctx, s3, Fq2, [a1_times_2, a2], fq2_mul());
 
     // s4 = a_2^2
@@ -111,10 +112,10 @@ pub fn new_mul_fq6(
     define_script!(ctx, v2, Fq2, [v2_l, v2_r], fq2_mul());
 
     // v3 = (a0 + 2a1 + 4a2) * (b0 + 2b1 + 4b2)
-    define_script!(ctx, a2_times_3, Fq2, [a2], fq2_mul_by_constant(3));
+    define_script!(ctx, a2_times_3, Fq2, [a2], fq2_mul_by_integer(3));
     define_script!(ctx, a1_p_a2_times_3, Fq2, [a1, a2_times_3], fq2_add());
     define_script!(ctx, v3_l, Fq2, [v1_l, a1_p_a2_times_3], fq2_add());
-    define_script!(ctx, b2_times_3, Fq2, [b2], fq2_mul_by_constant(3));
+    define_script!(ctx, b2_times_3, Fq2, [b2], fq2_mul_by_integer(3));
     define_script!(ctx, b1_p_b2_times_3, Fq2, [b1, b2_times_3], fq2_add());
     define_script!(ctx, v3_r, Fq2, [v1_r, b1_p_b2_times_3], fq2_add());
     define_script!(ctx, v3, Fq2, [v3_l, v3_r], fq2_mul());
@@ -123,10 +124,10 @@ pub fn new_mul_fq6(
     define_script!(ctx, v4, Fq2, [a2, b2], fq2_mul());
 
     // x = 3v0 - 3v1 - v2 + v3 - 12v4
-    define_script!(ctx, v0_times_3, Fq2, [v0], fq2_mul_by_constant(3));
-    define_script!(ctx, v1_times_3, Fq2, [v1], fq2_mul_by_constant(3));
-    define_script!(ctx, v4_times_6, Fq2, [v4], fq2_mul_by_constant(6));
-    define_script!(ctx, v4_times_12, Fq2, [v4_times_6], fq2_mul_by_constant(2));
+    define_script!(ctx, v0_times_3, Fq2, [v0], fq2_mul_by_integer(3));
+    define_script!(ctx, v1_times_3, Fq2, [v1], fq2_mul_by_integer(3));
+    define_script!(ctx, v4_times_6, Fq2, [v4], fq2_mul_by_integer(6));
+    define_script!(ctx, v4_times_12, Fq2, [v4_times_6], fq2_mul_by_integer(2));
     define_script!(ctx, x1, Fq2, [v0_times_3, v1_times_3], fq2_sub()); // x1 = 3v0 - 3v1
     define_script!(ctx, x2, Fq2, [x1, v2], fq2_sub()); // x2 = x1 - v2
     define_script!(ctx, x3, Fq2, [x2, v3], fq2_add()); // x3 = x2 + v3
@@ -134,12 +135,12 @@ pub fn new_mul_fq6(
 
     // c0 = 6v0 + \beta x
     define_script!(ctx, x_tweak, Fq2, [x], fq2_mul_nonresidue());
-    define_script!(ctx, v0_times_6, Fq2, [v0], fq2_mul_by_constant(6));
+    define_script!(ctx, v0_times_6, Fq2, [v0], fq2_mul_by_integer(6));
     define_script!(ctx, c0, Fq2, [v0_times_6, x_tweak], fq2_add());
 
     // y = -3v0 + 6v1 - 2v2 - v3 + 12v4
     define_script!(ctx, y1, Fq2, [v1_times_3, x1], fq2_sub()); // y1 = -3v0 + 6v1 = 3v1 - x1
-    define_script!(ctx, v2_times_2, Fq2, [v2], fq2_mul_by_constant(2));
+    define_script!(ctx, v2_times_2, Fq2, [v2], fq2_mul_by_integer(2));
     define_script!(ctx, y2, Fq2, [y1, v2_times_2], fq2_sub()); // y2 = y1 - 2v2
     define_script!(ctx, y3, Fq2, [y2, v3], fq2_sub()); // y3 = y2 - v3
     define_script!(ctx, y, Fq2, [y3, v4_times_12], fq2_add()); // y = y3 + 12v4
@@ -572,6 +573,51 @@ pub fn constant_line_evaluate_c1(
 }
 
 // outputs: t3_c0, t3_c1, t2_c0, t2_c1
+pub fn evaluate_chord_t2_and_t3(
+    ctx: &mut GraphContext,
+    p3_tweak: &BitVMNode,
+    p2_tweak: &BitVMNode,
+    bit: i8,
+) -> (BitVMNode, BitVMNode, BitVMNode, BitVMNode) {
+    let neg_flag = if bit == 1 { use_pos } else { use_neg };
+
+    // update t3 by chord line
+    define_script!(
+        ctx,
+        t3_c0,
+        Fq2,
+        [p3_tweak],
+        constant_line_evaluate_c0(evalute_t3, use_add, neg_flag)
+    );
+
+    define_script!(
+        ctx,
+        t3_c1,
+        Fq2,
+        [p3_tweak],
+        constant_line_evaluate_c1(evalute_t3, use_add, neg_flag)
+    );
+
+    // update t2 by chord line
+    define_script!(
+        ctx,
+        t2_c0,
+        Fq2,
+        [p2_tweak],
+        constant_line_evaluate_c0(evalute_t2, use_add, neg_flag)
+    );
+    define_script!(
+        ctx,
+        t2_c1,
+        Fq2,
+        [p2_tweak],
+        constant_line_evaluate_c1(evalute_t2, use_add, neg_flag)
+    );
+
+    (t3_c0, t3_c1, t2_c0, t2_c1)
+}
+
+// outputs: t3_c0, t3_c1, t2_c0, t2_c1
 pub fn evaluate_tangent_t2_and_t3(
     ctx: &mut GraphContext,
     p3_tweak: &BitVMNode,
@@ -710,6 +756,59 @@ pub fn line_evaluate_multiplication(
     define_script!(ctx, _check_mul_x2, CheckValid, [x2, dk2], check_fq2_equal());
 
     (g0, g1, g2)
+}
+
+pub fn fq12_frobinus_map(
+    ctx: &mut GraphContext,
+    c: [&BitVMNode; 3],
+    power: usize,
+) -> [BitVMNode; 3] {
+    assert!(power <= 3 && power >= 1, "power out of range: {}", power);
+    let [frob_c0, frob_c1, frob_c2] = fq6_frobinus_map(ctx, c, power);
+
+    // (d0, d1, d2) = (frob_c0, frob_c1, frob_c2) * fq12::frob_coeff_c1
+    let coeff = ark_bn254::Fq12Config::FROBENIUS_COEFF_FP12_C1
+        [power % ark_bn254::Fq12Config::FROBENIUS_COEFF_FP12_C1.len()];
+    define_script!(ctx, d0, Fq6, [frob_c0], fq2_mul_by_constant(coeff));
+    define_script!(ctx, d1, Fq6, [frob_c1], fq2_mul_by_constant(coeff));
+    define_script!(ctx, d2, Fq6, [frob_c2], fq2_mul_by_constant(coeff));
+    [d0, d1, d2]
+}
+
+pub fn fq6_frobinus_map(
+    ctx: &mut GraphContext,
+    c: [&BitVMNode; 3],
+    power: usize,
+) -> [BitVMNode; 3] {
+    assert!(power <= 3 && power >= 1, "power out of range: {}", power);
+    let [c0, c1, c2] = c;
+
+    // c0' = c0^q
+    define_script!(ctx, frob_c0, Fq2, [c0], fq2_frobinus_map(power));
+    // c1' = c1^q * fq6::frob_coeff_c1
+    let coeff = ark_bn254::Fq6Config::FROBENIUS_COEFF_FP6_C1
+        [power % ark_bn254::Fq6Config::FROBENIUS_COEFF_FP6_C1.len()];
+    define_script!(ctx, frob_c1, Fq2, [c1], fq2_frobinus_map(power));
+    define_script!(ctx, c1_tweak, Fq2, [frob_c1], fq2_mul_by_constant(coeff));
+
+    // c2' = c2^q * fq6::frob_coeff_c2
+    let coeff = ark_bn254::Fq6Config::FROBENIUS_COEFF_FP6_C2
+        [power % ark_bn254::Fq6Config::FROBENIUS_COEFF_FP6_C2.len()];
+    define_script!(ctx, frob_c2, Fq2, [c2], fq2_frobinus_map(power));
+    define_script!(ctx, c2_tweak, Fq2, [frob_c2], fq2_mul_by_constant(coeff));
+
+    [frob_c0, c1_tweak, c2_tweak]
+}
+
+pub fn fq2_frobinus_map(power: usize) -> (ComputeFn, ScriptFn) {
+    assert!(power <= 3 && power >= 1, "power out of range: {}", power);
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 1);
+        let x = inputs[0].get_fq2();
+        let y = x.frobenius_map(power);
+        State::Fq2(Some(y))
+    };
+    (Box::new(func), placeholder_script_fn())
 }
 
 #[cfg(test)]
@@ -904,5 +1003,18 @@ mod tests {
 
         // check result
         show_all_states(&ctx);
+    }
+
+    #[test_log::test]
+    fn test_frobinus() {
+        let mut ctx = GraphContext::new("test");
+        let a = Fq12::new(
+            Fq6::from(1),
+            Fq6::new(Fq2::from(1), Fq2::from(2), Fq2::from(3)),
+        );
+        for i in 1..4 {
+            let frob_a = a.frobenius_map(i);
+            println!("frob_a: {:?}", frob_a);
+        }
     }
 }

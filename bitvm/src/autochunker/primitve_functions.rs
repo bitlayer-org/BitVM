@@ -386,6 +386,29 @@ pub fn extract_fd(index: usize, bit: i8) -> ComputeFn {
     })
 }
 
+pub fn extract_frob_multi(index: usize, power: usize, is_neg: bool) -> ComputeFn {
+    assert!(index < 3);
+    assert!(power <= 3 && power >= 0);
+    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
+        let f = Fq12::new(Fq6::from(1), compute_ctx.f.unwrap());
+        let frob = if is_neg {
+            Fq12::new(Fq6::from(1), compute_ctx.c_inv)
+        } else {
+            Fq12::new(Fq6::from(1), compute_ctx.c)
+        };
+        let frob = frob.frobenius_map(power);
+
+        let result = f * frob;
+        let g = result.c1 / result.c0;
+
+        // update f
+        compute_ctx.f = Some(g.clone());
+
+        let select_array = [g.c0, g.c1, g.c2];
+        State::Fq2(Some(Fq2::from(select_array[index])))
+    })
+}
+
 pub fn fq2_mul_lc4() -> (ComputeFn, ScriptFn) {
     (
         Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
@@ -522,18 +545,23 @@ pub fn check_fq2_equal() -> (ComputeFn, ScriptFn) {
     )
 }
 
-pub fn fq2_mul_by_constant(i: i32) -> (ComputeFn, ScriptFn) {
-    assert!(i < 10, "mul_by_constant, {} too large", i);
-    assert!(i > -10, "mul_by_constant, {} too small", i);
+pub fn fq2_mul_by_constant(x: Fq2) -> (ComputeFn, ScriptFn) {
     (
         Box::new(move |_: &mut ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 1);
             let a = inputs[0].get_fq2();
-            let b = a * Fq2::from(i);
+            let b = a * x;
             State::Fq2(Some(b))
         }),
         placeholder_script_fn(),
     )
+}
+
+pub fn fq2_mul_by_integer(i: i32) -> (ComputeFn, ScriptFn) {
+    assert!(i < 10, "mul_by_constant, {} too large", i);
+    assert!(i > -10, "mul_by_constant, {} too small", i);
+    let x = Fq2::from(i);
+    fq2_mul_by_constant(x)
 }
 
 pub fn fq2_square() -> (ComputeFn, ScriptFn) {
