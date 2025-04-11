@@ -233,20 +233,14 @@ pub fn double_by_tangent_line(
     );
 
     // t4x' = \lambda^2 - 2 \cdot t4x
-    define_script!(
-        ctx,
-        updated_t4x,
-        Fq2,
-        [t4x, lambda],
-        double_tangent_line_x()
-    );
+    define_script!(ctx, new_t4x, Fq2, [t4x, lambda], double_tangent_line_x());
 
-    // t4y' = - (v + \lambda * t4x')
+    // t4y' = - (v + \lambda * t4x') and update t4
     define_script!(
         ctx,
-        updated_t4y,
+        new_t4y,
         Fq2,
-        [t4x, lambda, v],
+        [new_t4x, lambda, v],
         double_tangent_line_y()
     );
 
@@ -254,25 +248,140 @@ pub fn double_by_tangent_line(
     define_script!(ctx, c0, Fq2, [lambda, p4], nonconstant_line_evaluate_c0());
     define_script!(ctx, c1, Fq2, [v, p4], nonconstant_line_evaluate_c1());
 
-    (updated_t4x, updated_t4y, c0, c1)
+    (new_t4x, new_t4y, c0, c1)
 }
+
+// if bit == 1, add q4, else add q4.neg()
+// the only difference with tangent line is the way to compute the updated t4 point
+// for tangent line: x3 = \lambda^2 - 2 \cdot t4x
+//                   y3 = - (v + \lambda * x3)
+// for chord line:   x3 = \lambda^2 - t4x - q4x
+//                   y3 = - (v + \lambda * x3)
+pub fn add_by_chord_line(
+    ctx: &mut GraphContext,
+    t4x: &BitVMNode,
+    t4y: &BitVMNode,
+    q4x: &BitVMNode,
+    q4y: &BitVMNode,
+    q4y_neg: &BitVMNode,
+    p4: &BitVMNode,
+    bit: i8,
+) -> (BitVMNode, BitVMNode, BitVMNode, BitVMNode) {
+    // lambda
+    define_input!(
+        ctx,
+        lambda,
+        Fq2,
+        Box::new(move |ctx: &mut ComputeCtx, _: Vec<State>| {
+            assert!(ctx.t4.xy().is_some());
+            let (t4x, t4y) = ctx.t4.xy().unwrap();
+            let (q4x, q4y) = ctx.q4.xy().unwrap();
+            let (q4x, q4y) = if bit == 1 {
+                (q4x, q4y)
+            } else {
+                (q4x, q4y.neg())
+            };
+            let lambda = (t4y - q4y) / (t4x - q4x);
+            State::Fq2(Some(lambda))
+        })
+    );
+
+    // define bias
+    define_input!(
+        ctx,
+        v,
+        Fq2,
+        Box::new(move |ctx: &mut ComputeCtx, _: Vec<State>| {
+            assert!(ctx.t4.xy().is_some());
+            let (t4x, t4y) = ctx.t4.xy().unwrap();
+            let (q4x, q4y) = ctx.q4.xy().unwrap();
+            let (q4x, q4y) = if bit == 1 {
+                (q4x, q4y)
+            } else {
+                (q4x, q4y.neg())
+            };
+            let lambda = (t4y - q4y) / (t4x - q4x);
+            let v = t4y - lambda * t4x;
+            State::Fq2(Some(v))
+        })
+    );
+
+    // t4y =?= t4x \cdot \lambda + v
+    define_script!(
+        ctx,
+        _check_line_through_point,
+        CheckValid,
+        [t4x, t4y, lambda, v],
+        check_line_through_point()
+    );
+
+    // q4y =?= q4x \cdot \lambda + v
+    if bit == 1 {
+        define_script!(
+            ctx,
+            _check_line_through_point_q4,
+            CheckValid,
+            [q4x, q4y, lambda, v],
+            check_line_through_point()
+        );
+    } else {
+        define_script!(
+            ctx,
+            _check_line_through_point_q4,
+            CheckValid,
+            [q4x, q4y_neg, lambda, v],
+            check_line_through_point()
+        );
+    }
+
+    // t4x' = \lambda^2 - 2 \cdot t4x
+    define_script!(ctx, new_t4x, Fq2, [t4x, q4x, lambda], add_chord_line_x());
+
+    // t4y' = - (v + \lambda * t4x') and update t4
+    define_script!(ctx, new_t4y, Fq2, [q4x, lambda, v], add_chord_line_y());
+
+    // evaluate the point by the line (divisor)
+    define_script!(ctx, c0, Fq2, [lambda, p4], nonconstant_line_evaluate_c0());
+    define_script!(ctx, c1, Fq2, [v, p4], nonconstant_line_evaluate_c1());
+
+    (new_t4x, new_t4y, c0, c1)
+}
+
+// inputs
+fn add_chord_line_x() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 2);
+        let t4x = inputs[0].get_fq2();
+        let q4x = inputs[1].get_fq2();
+        let lambda = inputs[2].get_fq2();
+
+        // t4x' = \lambda^2 - 2 \cdot t4x
+        let t4x_new = lambda.square() - t4x - q4x;
+        State::Fq2(Some(t4x_new))
+    };
+
+    (Box::new(func), placeholder_script_fn())
+}
+
+// the same with `double_tangent_line_y`
+fn add_chord_line_y() -> (ComputeFn, ScriptFn) { double_tangent_line_y() }
 
 // inputs t4x, lambda, v
 fn double_tangent_line_y() -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 3);
-        let t4x = inputs[0].get_fq2();
+        let t4x_new = inputs[0].get_fq2();
         let lambda = inputs[1].get_fq2();
         let v = inputs[2].get_fq2();
 
         // t4y' = - (v + \lambda * t4x')
-        let t4x_new = lambda.square() - Fq2::from(2) * t4x;
-        let t4y_new = -(v + lambda * t4x);
+        let t4y_new = -(v + lambda * t4x_new);
         compute_ctx.t4 = G2Affine {
             x: t4x_new,
             y: t4y_new,
             infinity: false,
         };
+
         State::Fq2(Some(t4y_new))
     };
 

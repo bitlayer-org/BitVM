@@ -101,6 +101,10 @@ fn main_test() {
 
         define_script!(ctx, p3_tweak, G1, [p3], tweak_point());
 
+        define_input!(ctx, q4x, Fq2, extract_q4x());
+        define_input!(ctx, q4y, Fq2, extract_q4y());
+        define_script!(ctx, q4y_neg, Fq2, [q4y], fq2_neg());
+
         // saying c = 1 + a J, c_inv will be 1 - a J, because c * c_inv = (1+a^2) + 0 J = 1
         // so we can use neg(c) to represent the inverse of c
         define_input!(ctx, c0, Fq2, extract_c(0));
@@ -180,6 +184,16 @@ fn main_test() {
             (f0, f1, f2) = (fd0, fd1, fd2);
 
             // if ate bit is 1, we need to add the point, else we need to subtract the point
+            let res = add_by_chord_line(
+                &mut ctx.inner_context("add_t4"),
+                &t4x,
+                &t4y,
+                &q4x,
+                &q4y,
+                &q4y_neg,
+                &p3_tweak,
+                bit,
+            );
         }
     }
 

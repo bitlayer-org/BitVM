@@ -36,6 +36,7 @@ pub struct ComputeCtx {
     pub vky0: G1Affine,
     pub p2: G1Affine,             // immutable
     pub p4: G1Affine,             // immutable
+    pub q4: G2Affine,             // immutable
     pub q3: G2Affine,             // immutable
     pub q2: G2Affine,             // immutable
     pub t4: G2Affine,             // mutable
@@ -128,6 +129,7 @@ impl From<RawProof> for ComputeCtx {
             t4: q4,
             t3: q3,
             t2: q2,
+            q4: q4,
             q3: q3,
             q2: q2,
             f: Some(c_inv.c1 / c_inv.c0),
@@ -240,6 +242,20 @@ pub fn scalar_valid() -> (ComputeFn, ScriptFn) {
 pub fn extract_p2() -> ComputeFn {
     let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
         State::G1(Some(compute_ctx.p2.clone()))
+    };
+    Box::new(func)
+}
+
+pub fn extract_q4x() -> ComputeFn {
+    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
+        State::Fq2(Some(compute_ctx.q4.x().unwrap()))
+    };
+    Box::new(func)
+}
+
+pub fn extract_q4y() -> ComputeFn {
+    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
+        State::Fq2(Some(compute_ctx.q4.y().unwrap()))
     };
     Box::new(func)
 }
@@ -457,6 +473,18 @@ pub fn fq2_sub2() -> (ComputeFn, ScriptFn) {
             let c = inputs[2].get_fq2();
             let d = a - b - c;
             State::Fq2(Some(d))
+        }),
+        placeholder_script_fn(),
+    )
+}
+
+pub fn fq2_neg() -> (ComputeFn, ScriptFn) {
+    (
+        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 1);
+            let a = inputs[0].get_fq2();
+            let b = a.neg();
+            State::Fq2(Some(b))
         }),
         placeholder_script_fn(),
     )
