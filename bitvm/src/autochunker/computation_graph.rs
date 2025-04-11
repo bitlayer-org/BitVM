@@ -230,11 +230,11 @@ pub fn compute_states(graph_ctx: &GraphContext, ctx: &mut ComputeCtx) {
 
         debug!("handle {}, set_x: {:?}", x, queue_x);
 
-        let mut cur_node_info = {
+        let (mut cur_node_info, name) = {
             let graph = graph_ctx.graph.lock().unwrap();
             // extract function from node
             let node = graph.get_node(x.clone()).unwrap();
-            node.attributes.as_ref().unwrap().clone()
+            (node.attributes.as_ref().unwrap().clone(), node.name.clone())
         };
 
         let mut predecessor_states: Vec<State> = vec![];
@@ -269,7 +269,9 @@ pub fn compute_states(graph_ctx: &GraphContext, ctx: &mut ComputeCtx) {
         // update attributes
         assert_eq!(
             cur_node_info.state.get_type_name(),
-            result_state.get_type_name()
+            result_state.get_type_name(),
+            "cur_node_info: {}",
+            &name
         );
         cur_node_info.state = result_state;
 

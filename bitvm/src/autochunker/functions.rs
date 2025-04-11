@@ -769,9 +769,9 @@ pub fn fq12_frobinus_map(
     // (d0, d1, d2) = (frob_c0, frob_c1, frob_c2) * fq12::frob_coeff_c1
     let coeff = ark_bn254::Fq12Config::FROBENIUS_COEFF_FP12_C1
         [power % ark_bn254::Fq12Config::FROBENIUS_COEFF_FP12_C1.len()];
-    define_script!(ctx, d0, Fq6, [frob_c0], fq2_mul_by_constant(coeff));
-    define_script!(ctx, d1, Fq6, [frob_c1], fq2_mul_by_constant(coeff));
-    define_script!(ctx, d2, Fq6, [frob_c2], fq2_mul_by_constant(coeff));
+    define_script!(ctx, d0, Fq2, [frob_c0], fq2_mul_by_constant(coeff));
+    define_script!(ctx, d1, Fq2, [frob_c1], fq2_mul_by_constant(coeff));
+    define_script!(ctx, d2, Fq2, [frob_c2], fq2_mul_by_constant(coeff));
     [d0, d1, d2]
 }
 
@@ -817,7 +817,7 @@ mod tests {
         compute_states, new_input, BitVMNode, GraphContext,
     };
     use crate::autochunker::functions::{
-        double_by_tangent_line, new_mul_fq12, new_mul_fq6, new_square_fq6,
+        double_by_tangent_line, fq12_frobinus_map, new_mul_fq12, new_mul_fq6, new_square_fq6,
     };
     use crate::autochunker::intermediate_state::State;
     use crate::autochunker::primitve_functions::ComputeCtx;
@@ -1008,13 +1008,28 @@ mod tests {
     #[test_log::test]
     fn test_frobinus() {
         let mut ctx = GraphContext::new("test");
-        let a = Fq12::new(
-            Fq6::from(1),
-            Fq6::new(Fq2::from(1), Fq2::from(2), Fq2::from(3)),
-        );
-        for i in 1..4 {
-            let frob_a = a.frobenius_map(i);
-            println!("frob_a: {:?}", frob_a);
+        let x = Fq6::new(Fq2::from(1), Fq2::from(2), Fq2::from(3));
+        let a = Fq12::new(Fq6::from(1), x);
+        let a = a.frobenius_map(1);
+
+        let [a0, a1, a2] = new_fq6(&mut ctx, x);
+        let [b0, b1, b2] = fq12_frobinus_map(&mut ctx, [&a0, &a1, &a2], 1);
+
+        // compute states
+        let mut compute_ctx = RawProof::mock_proof().into();
+        compute_states(&ctx, &mut compute_ctx);
+
+        for (idx, (node, cx)) in vec![b0, b1, b2]
+            .into_iter()
+            .zip(vec![a.c1.c0, a.c1.c1, a.c1.c2].into_iter())
+            .enumerate()
+        {
+            let state = get_state(&ctx, &node.name);
+            info!(
+                "name: {}, c{} state: {:?}, c{}: {}",
+                node.name, idx, state, idx, cx
+            );
+            assert_eq!(state.get_fq2(), cx);
         }
     }
 }
