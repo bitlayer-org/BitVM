@@ -1,7 +1,9 @@
 use super::{computation_graph::*, intermediate_state::*, primitve_functions::*};
 use crate::{define_input, define_overide_script, define_script};
 use ark_bn254::{Fq12, Fq2, Fq6, Fq6Config, G2Affine};
+use ark_ec::bn::BnConfig;
 use ark_ec::{AffineRepr, CurveGroup};
+use ark_ff::MontFp;
 use ark_ff::{Field, Fp12Config, Fp6Config};
 use bitcoin::pow;
 use serde::de;
@@ -346,6 +348,53 @@ pub fn add_by_chord_line(
     define_script!(ctx, c1, Fq2, [v, p4], nonconstant_line_evaluate_c1());
 
     (new_t4x, new_t4y, c0, c1)
+}
+
+pub fn add_by_chord_line_with_frob(
+    ctx: &mut GraphContext,
+    t4x: &BitVMNode,
+    t4y: &BitVMNode,
+    frob_q4x: &BitVMNode,
+    frob_q4y: &BitVMNode,
+    p4: &BitVMNode,
+) -> (BitVMNode, BitVMNode, BitVMNode, BitVMNode) {
+    add_by_chord_line(ctx, t4x, t4y, frob_q4x, frob_q4y, frob_q4y, p4, 1)
+}
+
+// compute q' = (q.x.conjugate()*beta_12, q.y.conjugate() * beta_13)
+pub fn frob_point_mul_by_char(
+    ctx: &mut GraphContext,
+    q4x: &BitVMNode,
+    q4y: &BitVMNode,
+) -> (BitVMNode, BitVMNode) {
+    define_script!(ctx, q4x_con, Fq2, [q4x], fq2_conjugate());
+    define_script!(ctx, new_x, Fq2, [q4x_con], fq2_mul_by_constant(BETA12));
+
+    define_script!(ctx, q4y_con, Fq2, [q4y], fq2_conjugate());
+    define_script!(ctx, new_y, Fq2, [q4y_con], fq2_mul_by_constant(BETA13));
+
+    (new_x, new_y)
+}
+
+// compute q' = (q.x*beta_22, q.y)
+pub fn hinted_mul_by_2char_neg<'a>(
+    ctx: &'a mut GraphContext,
+    q4x: &'a BitVMNode,
+    q4y: &'a BitVMNode,
+) -> (BitVMNode, &'a BitVMNode) {
+    define_script!(ctx, new_x, Fq2, [q4x], fq2_mul_by_constant(BETA22));
+
+    (new_x, q4y)
+}
+
+pub fn fq2_conjugate() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 1);
+        let mut fq2 = inputs[0].get_fq2();
+        fq2.conjugate_in_place();
+        State::Fq2(Some(fq2))
+    };
+    (Box::new(func), placeholder_script_fn())
 }
 
 // inputs
@@ -811,19 +860,46 @@ pub fn fq2_frobinus_map(power: usize) -> (ComputeFn, ScriptFn) {
     (Box::new(func), placeholder_script_fn())
 }
 
+// compute q' = (q.x.conjugate()*beta_12, q.y.conjugate() * beta_13)
+const BETA22: Fq2 = Fq2::new(
+    MontFp!("21888242871839275220042445260109153167277707414472061641714758635765020556616"),
+    MontFp!("0"),
+);
+const BETA12: Fq2 = ark_bn254::Config::TWIST_MUL_BY_Q_X;
+const BETA13: Fq2 = ark_bn254::Config::TWIST_MUL_BY_Q_Y;
+
+pub fn mul_by_char(r: G2Affine) -> G2Affine {
+    let mut s = r;
+    s.x.frobenius_map_in_place(1);
+    s.x *= &BETA12;
+    s.y.frobenius_map_in_place(1);
+    s.y *= &BETA13;
+    s
+}
+
+// compute q'' = (q.x * beta_22, q.y)
+pub fn mul_by_2char_neg(r: G2Affine) -> G2Affine {
+    let mut s = r;
+    s.x *= &BETA22;
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use crate::autochunker::computation_graph::{
         compute_states, new_input, BitVMNode, GraphContext,
     };
     use crate::autochunker::functions::{
-        double_by_tangent_line, fq12_frobinus_map, new_mul_fq12, new_mul_fq6, new_square_fq6,
+        double_by_tangent_line, fq12_frobinus_map, mul_by_2char_neg, mul_by_char, new_mul_fq12,
+        new_mul_fq6, new_square_fq6,
     };
     use crate::autochunker::intermediate_state::State;
     use crate::autochunker::primitve_functions::ComputeCtx;
     use crate::autochunker::proof::RawProof;
     use crate::{define_input, define_overide_script, define_script};
+    use ark_bn254::G2Affine;
     use ark_bn254::{Fq, Fq12, Fq2, Fq6, Fq6Config, G1Affine};
+    use ark_ec::bn::BnConfig;
     use ark_ec::AffineRepr;
     use ark_ff::Fp6Config;
     use ark_ff::{AdditiveGroup, Field};
@@ -1031,5 +1107,20 @@ mod tests {
             );
             assert_eq!(state.get_fq2(), cx);
         }
+    }
+
+    #[test_log::test]
+    fn test_eval_mul_by_char() {
+        let g2 = G2Affine::from_random_bytes(b"bytes").unwrap();
+        let frob_g2 = mul_by_char(g2);
+        let frob2_g2 = mul_by_char(frob_g2);
+        let neg_frob2_g2 = frob2_g2.neg();
+        let g2_tweak = mul_by_2char_neg(g2);
+        info!("g2: {:?}", g2);
+        info!("frob_g2: {:?}", frob_g2);
+        info!("frob2_g2: {:?}", frob2_g2);
+        info!("neg_frob2_g2: {:?}", neg_frob2_g2);
+        info!("g2_tweak: {:?}", g2_tweak);
+        assert_eq!(neg_frob2_g2, g2_tweak);
     }
 }
