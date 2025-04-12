@@ -138,10 +138,11 @@ fn main_test() {
             let (t4_c0, t4_c1) = (res.2, res.3);
 
             // evaluate t2 and t3 by precomputed tangent line
-            let (t3_c0, t3_c1, t2_c0, t2_c1) = evaluate_tangent_t2_and_t3(
+            let (t3_c0, t3_c1, t2_c0, t2_c1) = evaluate_t2_and_t3(
                 &mut ctx.inner_context("double_t2_t3"),
                 &p3_tweak,
                 &p2_tweak,
+                eval_args::Mode::Double,
             );
 
             // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
@@ -202,11 +203,15 @@ fn main_test() {
             let (t4_c0, t4_c1) = (res.2, res.3);
 
             // evaluate t2 and t3 by precomputed chord line
-            let (t3_c0, t3_c1, t2_c0, t2_c1) = evaluate_chord_t2_and_t3(
-                &mut ctx.inner_context("double_t2_t3"),
+            let (t3_c0, t3_c1, t2_c0, t2_c1) = evaluate_t2_and_t3(
+                &mut ctx.inner_context("add_t2_t3"),
                 &p3_tweak,
                 &p2_tweak,
-                bit,
+                eval_args::Mode::Add(if bit == 1 {
+                    eval_args::IsNegBit::Pos
+                } else {
+                    eval_args::IsNegBit::Neg
+                }),
             );
 
             // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
@@ -285,7 +290,133 @@ fn main_test() {
         );
         (f0, f1, f2) = (f3p0, f3p1, f3p2);
 
-        //
+        // (q4x_p, q4y_p) = (q4x, q4y)p
+        let (q4x_p, q4y_p) = frob_point_mul_by_char(&mut ctx.inner_context("q4_p"), &q4x, &q4y);
+        // (q4x_p2, q4y_p2) = (q4x, q4y)2p.neg()
+        let res = frob_point_mul_by_2char_neg(&mut ctx.inner_context("q4_2p"), &q4x, &q4y);
+        let q4x_p2 = res.0;
+        let q4y_p2 = res.1;
+        // (q4x_p3, q4y_p3) = (q4x, q4y)3p
+        let (q4x_p3, q4y_p3) = frob_point_mul_by_char3(&mut ctx.inner_context("q4_3p"), &q4x, &q4y);
+
+        // t4 = t4 + (q4x_p, q4y_p)
+        let res = add_by_chord_line_with_frob(&mut ctx, &t4x, &t4y, &q4x_p, &q4y_p, &p4);
+        (t4x, t4y) = (res.0, res.1);
+        let (t4_c0, t4_c1) = (res.2, res.3);
+
+        // evaluate t2 and t3 by precomputed chord line
+        let (t3_c0, t3_c1, t2_c0, t2_c1) = evaluate_t2_and_t3(
+            &mut ctx.inner_context("frob_t2_t3"),
+            &p3_tweak,
+            &p2_tweak,
+            eval_args::Mode::Frob(eval_args::MulType::Char),
+        );
+
+        // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
+        let eval_multi = line_evaluate_multiplication(
+            &mut ctx.inner_context("frob_eval"),
+            &t4_c0,
+            &t4_c1,
+            &t3_c0,
+            &t3_c1,
+            &t2_c0,
+            &t2_c1,
+        );
+
+        // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
+        define_input!(ctx, eval_frob_f0, Fq6, extract_eval_multi_f(0));
+        define_input!(ctx, eval_frob_f1, Fq6, extract_eval_multi_f(1));
+        define_input!(ctx, eval_frob_f2, Fq6, extract_eval_multi_f(2));
+        new_mul_fq12(
+            &mut ctx.inner_context("eval_frob"),
+            [&f0, &f1, &f2],
+            [&eval_multi.0, &eval_multi.1, &eval_multi.2],
+            [&eval_frob_f0, &eval_frob_f1, &eval_frob_f2],
+        );
+        (f0, f1, f2) = (eval_frob_f0, eval_frob_f1, eval_frob_f2);
+
+        // t4 = t4 + (q4x_p2, q4y_p2)
+        let res = add_by_chord_line_with_frob(&mut ctx, &t4x, &t4y, &q4x_p2, &q4y_p2, &p4);
+        (t4x, t4y) = (res.0, res.1);
+        let (t4_c0, t4_c1) = (res.2, res.3);
+
+        // evaluate t2 and t3 by precomputed chord line
+        let (t3_c0, t3_c1, t2_c0, t2_c1) = evaluate_t2_and_t3(
+            &mut ctx.inner_context("frob2_t2_t3"),
+            &p3_tweak,
+            &p2_tweak,
+            eval_args::Mode::Frob(eval_args::MulType::Char2Neg),
+        );
+
+        // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
+        let eval_multi = line_evaluate_multiplication(
+            &mut ctx.inner_context("frob2_eval"),
+            &t4_c0,
+            &t4_c1,
+            &t3_c0,
+            &t3_c1,
+            &t2_c0,
+            &t2_c1,
+        );
+
+        // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
+        define_input!(ctx, eval_frob2_f0, Fq6, extract_eval_multi_f(0));
+        define_input!(ctx, eval_frob2_f1, Fq6, extract_eval_multi_f(1));
+        define_input!(ctx, eval_frob2_f2, Fq6, extract_eval_multi_f(2));
+        new_mul_fq12(
+            &mut ctx.inner_context("eval_frob2"),
+            [&f0, &f1, &f2],
+            [&eval_multi.0, &eval_multi.1, &eval_multi.2],
+            [&eval_frob2_f0, &eval_frob2_f1, &eval_frob2_f2],
+        );
+        (f0, f1, f2) = (eval_frob2_f0, eval_frob2_f1, eval_frob2_f2);
+
+        // check (t4x, t4y).neg() == 3q * (q4x, q4y)
+        define_script!(ctx, t4y_neg, Fq2, [t4y], fq2_neg());
+        let t4x_neg = t4x;
+        define_script!(
+            ctx,
+            _check_x,
+            CheckValid,
+            [t4x_neg, q4x_p3],
+            check_fq2_equal()
+        );
+        define_script!(
+            ctx,
+            _check_y,
+            CheckValid,
+            [t4y_neg, q4y_p3],
+            check_fq2_equal()
+        );
+
+        // check (f0, f1, f2).neg() + fixed
+        define_input!(ctx, f_fixed0, Fq6, extract_p1q1(0));
+        define_input!(ctx, f_fixed1, Fq6, extract_p1q1(1));
+        define_input!(ctx, f_fixed2, Fq6, extract_p1q1(2));
+        define_script!(ctx, f0_neg, Fq6, [f0], fq2_neg());
+        define_script!(ctx, f1_neg, Fq6, [f1], fq2_neg());
+        define_script!(ctx, f2_neg, Fq6, [f2], fq2_neg());
+        define_script!(
+            ctx,
+            _check_f0,
+            CheckValid,
+            [f0_neg, f_fixed0],
+            check_fq2_equal()
+        );
+        define_script!(
+            ctx,
+            _check_f1,
+            CheckValid,
+            [f1_neg, f_fixed1],
+            check_fq2_equal()
+        );
+        define_script!(
+            ctx,
+            _check_f2,
+            CheckValid,
+            [f2_neg, f_fixed2],
+            check_fq2_equal()
+        );
     }
 
     let time = time::Instant::now();

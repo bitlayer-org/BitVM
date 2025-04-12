@@ -6,6 +6,7 @@ use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::MontFp;
 use ark_ff::{Field, Fp12Config, Fp6Config};
 use bitcoin::pow;
+use eval_args::T3OrT2;
 use serde::de;
 use std::ops::Neg;
 
@@ -260,6 +261,7 @@ pub fn double_by_tangent_line(
 //                   y3 = - (v + \lambda * x3)
 // for chord line:   x3 = \lambda^2 - t4x - q4x
 //                   y3 = - (v + \lambda * x3)
+// return (t4x', t4y', c0, c1)
 pub fn add_by_chord_line(
     ctx: &mut GraphContext,
     t4x: &BitVMNode,
@@ -350,6 +352,7 @@ pub fn add_by_chord_line(
     (new_t4x, new_t4y, c0, c1)
 }
 
+// return (t4x', t4y', c0, c1)
 pub fn add_by_chord_line_with_frob(
     ctx: &mut GraphContext,
     t4x: &BitVMNode,
@@ -376,9 +379,23 @@ pub fn frob_point_mul_by_char(
     (new_x, new_y)
 }
 
+pub fn frob_point_mul_by_char3(
+    ctx: &mut GraphContext,
+    q4x: &BitVMNode,
+    q4y: &BitVMNode,
+) -> (BitVMNode, BitVMNode) {
+    define_script!(ctx, q4x_con, Fq2, [q4x], fq2_conjugate());
+    define_script!(ctx, new_x, Fq2, [q4x_con], fq2_mul_by_constant(BETA32));
+
+    define_script!(ctx, q4y_con, Fq2, [q4y], fq2_conjugate());
+    define_script!(ctx, new_y, Fq2, [q4y_con], fq2_mul_by_constant(BETA33));
+
+    (new_x, new_y)
+}
+
 // compute q' = (q.x*beta_22, q.y)
-pub fn hinted_mul_by_2char_neg<'a>(
-    ctx: &'a mut GraphContext,
+pub fn frob_point_mul_by_2char_neg<'a>(
+    ctx: &mut GraphContext,
     q4x: &'a BitVMNode,
     q4y: &'a BitVMNode,
 ) -> (BitVMNode, &'a BitVMNode) {
@@ -524,36 +541,44 @@ fn nonconstant_line_evaluate_c1() -> (ComputeFn, ScriptFn) {
 }
 
 // outputs [lambda, v]
-fn constant_line_compute(
-    compute_ctx: &ComputeCtx,
-    t3_or_t2: bool,
-    is_double: bool,
-    is_neg_bit: bool,
-) -> (Fq2, Fq2, G2Affine) {
+fn constant_line_compute(compute_ctx: &ComputeCtx, args: eval_args::Args) -> (Fq2, Fq2, G2Affine) {
     // select t_point
-    let (t_point, q_point) = if t3_or_t2 {
-        (compute_ctx.t3, compute_ctx.q3)
-    } else {
-        (compute_ctx.t2, compute_ctx.q2)
+    let (t_point, q_point) = match args.t3_or_t2 {
+        T3OrT2::T3 => (compute_ctx.t3, compute_ctx.q3),
+        T3OrT2::T2 => (compute_ctx.t2, compute_ctx.q2),
     };
 
-    // select is_neg_bit
-    let q_point = if is_neg_bit { q_point.neg() } else { q_point };
-
-    // select is_double
-    let lambda = if is_double {
-        (t_point.x.square() + t_point.x.square() + t_point.x.square()) / (t_point.y + t_point.y)
-    } else {
-        (t_point.y - q_point.y) / (t_point.x - q_point.x)
-    };
-
-    // update t_point
-    let new_t_point = if is_double {
-        t_point + t_point
-    } else if is_neg_bit {
-        t_point - q_point
-    } else {
-        t_point + q_point
+    let (lambda, new_t_point) = match args.mode {
+        eval_args::Mode::Double => {
+            // select is_double
+            (
+                (t_point.x.square() + t_point.x.square() + t_point.x.square())
+                    / (t_point.y + t_point.y),
+                t_point + t_point,
+            )
+        }
+        eval_args::Mode::Add(is_neg_bit) => {
+            // select is_double
+            let q_point = match is_neg_bit {
+                eval_args::IsNegBit::Neg => q_point.neg(),
+                eval_args::IsNegBit::Pos => q_point,
+            };
+            (
+                (t_point.y - q_point.y) / (t_point.x - q_point.x),
+                t_point + q_point,
+            )
+        }
+        eval_args::Mode::Frob(mul_type) => {
+            // select is_double
+            let q_point = match mul_type {
+                eval_args::MulType::Char => mul_by_char(q_point),
+                eval_args::MulType::Char2Neg => mul_by_2char_neg(q_point),
+            };
+            (
+                (t_point.y - q_point.y) / (t_point.x - q_point.x),
+                t_point + q_point,
+            )
+        }
     };
 
     let v = t_point.y - lambda * t_point.x;
@@ -570,16 +595,43 @@ pub const use_double: bool = true;
 pub const use_add: bool = false;
 pub const use_neg: bool = true;
 pub const use_pos: bool = false;
-pub fn constant_line_evaluate_c0(
-    t3_or_t2: bool,
-    is_double: bool,
-    is_neg_bit: bool,
-) -> (ComputeFn, ScriptFn) {
+
+pub mod eval_args {
+    #[derive(Debug, Clone)]
+    pub struct Args {
+        pub t3_or_t2: T3OrT2,
+        pub mode: Mode,
+    }
+    #[derive(Debug, Clone)]
+    pub enum T3OrT2 {
+        T3,
+        T2,
+    }
+    #[derive(Debug, Clone)]
+    pub enum Mode {
+        Double,
+        Add(IsNegBit),
+        Frob(MulType),
+    }
+    #[derive(Debug, Clone)]
+    pub enum IsNegBit {
+        Neg,
+        Pos,
+    }
+    #[derive(Debug, Clone)]
+    pub enum MulType {
+        Char,
+        Char2Neg,
+    }
+}
+
+pub fn constant_line_eval_c0(args: &eval_args::Args) -> (ComputeFn, ScriptFn) {
+    let args = args.clone();
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let p_point = inputs[0].get_g1();
 
-        let (lambda, _, _) = constant_line_compute(compute_ctx, t3_or_t2, is_double, is_neg_bit);
+        let (lambda, _, _) = constant_line_compute(compute_ctx, args.clone());
 
         let mut c0 = lambda;
         c0.mul_assign_by_basefield(&p_point.x().unwrap());
@@ -589,17 +641,13 @@ pub fn constant_line_evaluate_c0(
     };
     (Box::new(func), placeholder_script_fn())
 }
-pub fn constant_line_evaluate_c1(
-    t3_or_t2: bool,
-    is_double: bool,
-    is_neg_bit: bool,
-) -> (ComputeFn, ScriptFn) {
+pub fn constant_line_eval_c1(args: &eval_args::Args) -> (ComputeFn, ScriptFn) {
+    let args = args.clone();
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let p_point = inputs[0].get_g1();
 
-        let (lambda, v, new_t_point) =
-            constant_line_compute(compute_ctx, t3_or_t2, is_double, is_neg_bit);
+        let (lambda, v, new_t_point) = constant_line_compute(compute_ctx, args.clone());
 
         let mut c0 = lambda;
         c0.mul_assign_by_basefield(&p_point.x().unwrap());
@@ -607,12 +655,15 @@ pub fn constant_line_evaluate_c1(
         c1.mul_assign_by_basefield(&p_point.y().unwrap());
 
         // update t point and point evaluate
-        if t3_or_t2 {
-            compute_ctx.t3 = new_t_point;
-            compute_ctx.evaluate_p3 = Some(Fq6::new(c0, c1, Fq2::from(0)));
-        } else {
-            compute_ctx.t2 = new_t_point;
-            compute_ctx.evaluate_p2 = Some(Fq6::new(c0, c1, Fq2::from(0)));
+        match args.t3_or_t2 {
+            eval_args::T3OrT2::T3 => {
+                compute_ctx.t3 = new_t_point;
+                compute_ctx.evaluate_p3 = Some(Fq6::new(c0, c1, Fq2::from(0)));
+            }
+            eval_args::T3OrT2::T2 => {
+                compute_ctx.t2 = new_t_point;
+                compute_ctx.evaluate_p2 = Some(Fq6::new(c0, c1, Fq2::from(0)));
+            }
         }
 
         // evaluate the point by the line (divisor)
@@ -622,88 +673,28 @@ pub fn constant_line_evaluate_c1(
 }
 
 // outputs: t3_c0, t3_c1, t2_c0, t2_c1
-pub fn evaluate_chord_t2_and_t3(
+pub fn evaluate_t2_and_t3(
     ctx: &mut GraphContext,
     p3_tweak: &BitVMNode,
     p2_tweak: &BitVMNode,
-    bit: i8,
+    mode: eval_args::Mode,
 ) -> (BitVMNode, BitVMNode, BitVMNode, BitVMNode) {
-    let neg_flag = if bit == 1 { use_pos } else { use_neg };
+    let t2_args = eval_args::Args {
+        t3_or_t2: eval_args::T3OrT2::T2,
+        mode: mode.clone(),
+    };
+    let t3_args = eval_args::Args {
+        t3_or_t2: eval_args::T3OrT2::T3,
+        mode: mode,
+    };
 
     // update t3 by chord line
-    define_script!(
-        ctx,
-        t3_c0,
-        Fq2,
-        [p3_tweak],
-        constant_line_evaluate_c0(evalute_t3, use_add, neg_flag)
-    );
-
-    define_script!(
-        ctx,
-        t3_c1,
-        Fq2,
-        [p3_tweak],
-        constant_line_evaluate_c1(evalute_t3, use_add, neg_flag)
-    );
+    define_script!(ctx, t3_c0, Fq2, [p3_tweak], constant_line_eval_c0(&t3_args));
+    define_script!(ctx, t3_c1, Fq2, [p3_tweak], constant_line_eval_c1(&t3_args));
 
     // update t2 by chord line
-    define_script!(
-        ctx,
-        t2_c0,
-        Fq2,
-        [p2_tweak],
-        constant_line_evaluate_c0(evalute_t2, use_add, neg_flag)
-    );
-    define_script!(
-        ctx,
-        t2_c1,
-        Fq2,
-        [p2_tweak],
-        constant_line_evaluate_c1(evalute_t2, use_add, neg_flag)
-    );
-
-    (t3_c0, t3_c1, t2_c0, t2_c1)
-}
-
-// outputs: t3_c0, t3_c1, t2_c0, t2_c1
-pub fn evaluate_tangent_t2_and_t3(
-    ctx: &mut GraphContext,
-    p3_tweak: &BitVMNode,
-    p2_tweak: &BitVMNode,
-) -> (BitVMNode, BitVMNode, BitVMNode, BitVMNode) {
-    // update t3 by tagent line
-    define_script!(
-        ctx,
-        t3_c0,
-        Fq2,
-        [p3_tweak],
-        constant_line_evaluate_c0(evalute_t3, use_double, use_neg)
-    );
-
-    define_script!(
-        ctx,
-        t3_c1,
-        Fq2,
-        [p3_tweak],
-        constant_line_evaluate_c1(evalute_t3, use_double, use_neg)
-    );
-
-    // update t2 by tagent line
-    define_script!(
-        ctx,
-        t2_c0,
-        Fq2,
-        [p2_tweak],
-        constant_line_evaluate_c0(evalute_t2, use_double, use_neg)
-    );
-    define_script!(
-        ctx,
-        t2_c1,
-        Fq2,
-        [p2_tweak],
-        constant_line_evaluate_c1(evalute_t2, use_double, use_neg)
-    );
+    define_script!(ctx, t2_c0, Fq2, [p2_tweak], constant_line_eval_c0(&t2_args));
+    define_script!(ctx, t2_c1, Fq2, [p2_tweak], constant_line_eval_c1(&t2_args));
 
     (t3_c0, t3_c1, t2_c0, t2_c1)
 }
@@ -860,7 +851,14 @@ pub fn fq2_frobinus_map(power: usize) -> (ComputeFn, ScriptFn) {
     (Box::new(func), placeholder_script_fn())
 }
 
-// compute q' = (q.x.conjugate()*beta_12, q.y.conjugate() * beta_13)
+const BETA32: Fq2 = Fq2::new(
+    MontFp!("3772000881919853776433695186713858239009073593817195771773381919316419345261"),
+    MontFp!("2236595495967245188281701248203181795121068902605861227855261137820944008926"),
+);
+const BETA33: Fq2 = Fq2::new(
+    MontFp!("19066677689644738377698246183563772429336693972053703295610958340458742082029"),
+    MontFp!("18382399103927718843559375435273026243156067647398564021675359801612095278180"),
+);
 const BETA22: Fq2 = Fq2::new(
     MontFp!("21888242871839275220042445260109153167277707414472061641714758635765020556616"),
     MontFp!("0"),
@@ -868,6 +866,7 @@ const BETA22: Fq2 = Fq2::new(
 const BETA12: Fq2 = ark_bn254::Config::TWIST_MUL_BY_Q_X;
 const BETA13: Fq2 = ark_bn254::Config::TWIST_MUL_BY_Q_Y;
 
+// compute q' = (q.x.conjugate()*beta_12, q.y.conjugate() * beta_13)
 pub fn mul_by_char(r: G2Affine) -> G2Affine {
     let mut s = r;
     s.x.frobenius_map_in_place(1);

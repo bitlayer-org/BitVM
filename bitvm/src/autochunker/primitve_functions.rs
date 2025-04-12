@@ -11,7 +11,7 @@ use ark_ff::Fp6Config;
 use ark_ff::{AdditiveGroup, Field, One, PrimeField};
 use bitcoin_script::{script, Script};
 use core::ops::Neg;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use num_bigint::BigUint;
 use std::sync::Arc;
 
@@ -34,6 +34,7 @@ pub struct ComputeCtx {
     pub msm_points_from_pk: Vec<G1Affine>,
     pub msm_scalars: Vec<Fr>,
     pub vky0: G1Affine,
+    pub p1q1: Fq6,                // immutable
     pub p2: G1Affine,             // immutable
     pub p4: G1Affine,             // immutable
     pub q4: G2Affine,             // immutable
@@ -99,6 +100,7 @@ impl From<RawProof> for ComputeCtx {
         let f_without_p1q1 = pairing
             .multi_miller_loop_affine([p2, p3, p4], [q2, q3, q4])
             .0;
+        assert_eq!(f, f_fixed * f_without_p1q1);
         let (c, _) = compute_c_wi(f);
         let c_inv = c.inverse().unwrap();
         let result = f * (c_inv.pow(LAMBDA.to_u64_digits()));
@@ -106,7 +108,7 @@ impl From<RawProof> for ComputeCtx {
         assert_eq!(result.c1, Fq6::ZERO);
 
         if result.c1 != Fq6::ZERO {
-            warn!(
+            error!(
                 "check the result of pairing: {:?}, proof is not correct",
                 result
             );
@@ -122,6 +124,7 @@ impl From<RawProof> for ComputeCtx {
             msm_points_from_pk: msm_gs,
             msm_scalars: msm_scalar,
             vky0: vky0,
+            p1q1: f_fixed.c1 / f_fixed.c0,
             p2: p2,
             p4: p4,
             c: c.c1 / c.c0,
@@ -404,6 +407,15 @@ pub fn extract_frob_multi(index: usize, power: usize, is_neg: bool) -> ComputeFn
         // update f
         compute_ctx.f = Some(g.clone());
 
+        let select_array = [g.c0, g.c1, g.c2];
+        State::Fq2(Some(Fq2::from(select_array[index])))
+    })
+}
+
+pub fn extract_p1q1(index: usize) -> ComputeFn {
+    assert!(index < 3);
+    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
+        let g = compute_ctx.p1q1.clone();
         let select_array = [g.c0, g.c1, g.c2];
         State::Fq2(Some(Fq2::from(select_array[index])))
     })
