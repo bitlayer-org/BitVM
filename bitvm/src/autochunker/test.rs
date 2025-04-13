@@ -9,8 +9,11 @@ use crate::autochunker::primitve_functions::*;
 use crate::autochunker::proof::*;
 use ark_bn254::Config as Bn254Config;
 use ark_ec::bn::BnConfig;
+use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
 use log::info;
 use paste::paste;
+use rayon::prelude::*;
 
 #[test_log::test]
 fn main_test() {
@@ -104,9 +107,9 @@ fn main_test() {
     define_input!(ctx, c0, Fq2, extract_c(0));
     define_input!(ctx, c1, Fq2, extract_c(1));
     define_input!(ctx, c2, Fq2, extract_c(2));
-    define_script!(ctx, c_inv0, Fq6, [c0], neg_fq2());
-    define_script!(ctx, c_inv1, Fq6, [c1], neg_fq2());
-    define_script!(ctx, c_inv2, Fq6, [c2], neg_fq2());
+    define_script!(ctx, c_inv0, Fq2, [c0], neg_fq2());
+    define_script!(ctx, c_inv1, Fq2, [c1], neg_fq2());
+    define_script!(ctx, c_inv2, Fq2, [c2], neg_fq2());
 
     // define t4x and t4y
     define_input!(ctx, t4x, Fq2, extract_t4x());
@@ -147,7 +150,7 @@ fn main_test() {
 
             // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
             let eval_multi = line_evaluate_multiplication(
-                &mut ctx.inner_context("square_eval"),
+                &mut ctx.inner_context("double_eval"),
                 &t4_c0,
                 &t4_c1,
                 &t3_c0,
@@ -157,11 +160,11 @@ fn main_test() {
             );
 
             // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
-            define_input!(ctx, square_eval_f0, Fq6, extract_eval_multi_f(0));
-            define_input!(ctx, square_eval_f1, Fq6, extract_eval_multi_f(1));
-            define_input!(ctx, sqaure_eval_f2, Fq6, extract_eval_multi_f(2));
+            define_input!(ctx, square_eval_f0, Fq2, extract_eval_multi_f(0));
+            define_input!(ctx, square_eval_f1, Fq2, extract_eval_multi_f(1));
+            define_input!(ctx, sqaure_eval_f2, Fq2, extract_eval_multi_f(2));
             new_mul_fq12(
-                &mut ctx.inner_context("eval_multi"),
+                &mut ctx.inner_context("double_multi"),
                 [&f0, &f1, &f2],
                 [&eval_multi.0, &eval_multi.1, &eval_multi.2],
                 [&square_eval_f0, &square_eval_f1, &sqaure_eval_f2],
@@ -170,6 +173,11 @@ fn main_test() {
 
             // if ate bit is 1, we need to multiply the c, else we need to multiply the c_inv
             let bit = Bn254Config::ATE_LOOP_COUNT[i];
+
+            if bit == 0 {
+                continue;
+            }
+
             let (d0, d1, d2) = if bit == -1 {
                 (&c0, &c1, &c2)
             } else {
@@ -177,9 +185,9 @@ fn main_test() {
             };
 
             // (fd0, fd1, fd2) = (f0, f1, f2) * (d0, d1, d2)
-            define_input!(ctx, fd0, Fq6, extract_fd(0, bit));
-            define_input!(ctx, fd1, Fq6, extract_fd(1, bit));
-            define_input!(ctx, fd2, Fq6, extract_fd(1, bit));
+            define_input!(ctx, fd0, Fq2, extract_fd(0, bit));
+            define_input!(ctx, fd1, Fq2, extract_fd(1, bit));
+            define_input!(ctx, fd2, Fq2, extract_fd(1, bit));
             new_mul_fq12(
                 &mut ctx.inner_context("fd"),
                 [&f0, &f1, &f2],
@@ -226,11 +234,11 @@ fn main_test() {
             );
 
             // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
-            define_input!(ctx, add_eval_f0, Fq6, extract_eval_multi_f(0));
-            define_input!(ctx, add_eval_f1, Fq6, extract_eval_multi_f(1));
-            define_input!(ctx, add_eval_f2, Fq6, extract_eval_multi_f(2));
+            define_input!(ctx, add_eval_f0, Fq2, extract_eval_multi_f(0));
+            define_input!(ctx, add_eval_f1, Fq2, extract_eval_multi_f(1));
+            define_input!(ctx, add_eval_f2, Fq2, extract_eval_multi_f(2));
             new_mul_fq12(
-                &mut ctx.inner_context("eval_multi"),
+                &mut ctx.inner_context("add_multi"),
                 [&f0, &f1, &f2],
                 [&eval_multi.0, &eval_multi.1, &eval_multi.2],
                 [&add_eval_f0, &add_eval_f1, &add_eval_f2],
@@ -255,9 +263,9 @@ fn main_test() {
             fq12_frobinus_map(&mut ctx.inner_context("3p"), [&c_inv0, &c_inv1, &c_inv2], 3);
 
         // f = f * c_inv^p
-        define_input!(ctx, fp0, Fq6, extract_frob_multi(0, 1, use_neg));
-        define_input!(ctx, fp1, Fq6, extract_frob_multi(1, 1, use_neg));
-        define_input!(ctx, fp2, Fq6, extract_frob_multi(2, 1, use_neg));
+        define_input!(ctx, fp0, Fq2, extract_frob_multi(0, 1, use_neg));
+        define_input!(ctx, fp1, Fq2, extract_frob_multi(1, 1, use_neg));
+        define_input!(ctx, fp2, Fq2, extract_frob_multi(2, 1, use_neg));
         new_mul_fq12(
             &mut ctx.inner_context("fp"),
             [&f0, &f1, &f2],
@@ -267,9 +275,9 @@ fn main_test() {
         (f0, f1, f2) = (fp0, fp1, fp2);
 
         // f = f * c^2p
-        define_input!(ctx, f2p0, Fq6, extract_frob_multi(0, 2, use_pos));
-        define_input!(ctx, f2p1, Fq6, extract_frob_multi(1, 2, use_pos));
-        define_input!(ctx, f2p2, Fq6, extract_frob_multi(2, 2, use_pos));
+        define_input!(ctx, f2p0, Fq2, extract_frob_multi(0, 2, use_pos));
+        define_input!(ctx, f2p1, Fq2, extract_frob_multi(1, 2, use_pos));
+        define_input!(ctx, f2p2, Fq2, extract_frob_multi(2, 2, use_pos));
         new_mul_fq12(
             &mut ctx.inner_context("f2p"),
             [&f0, &f1, &f2],
@@ -279,9 +287,9 @@ fn main_test() {
         (f0, f1, f2) = (f2p0, f2p1, f2p2);
 
         // f = f * c_inv^3p
-        define_input!(ctx, f3p0, Fq6, extract_frob_multi(0, 3, use_neg));
-        define_input!(ctx, f3p1, Fq6, extract_frob_multi(1, 3, use_neg));
-        define_input!(ctx, f3p2, Fq6, extract_frob_multi(2, 3, use_neg));
+        define_input!(ctx, f3p0, Fq2, extract_frob_multi(0, 3, use_neg));
+        define_input!(ctx, f3p1, Fq2, extract_frob_multi(1, 3, use_neg));
+        define_input!(ctx, f3p2, Fq2, extract_frob_multi(2, 3, use_neg));
         new_mul_fq12(
             &mut ctx.inner_context("f3p"),
             [&f0, &f1, &f2],
@@ -300,7 +308,14 @@ fn main_test() {
         let (q4x_p3, q4y_p3) = frob_point_mul_by_char3(&mut ctx.inner_context("q4_3p"), &q4x, &q4y);
 
         // t4 = t4 + (q4x_p, q4y_p)
-        let res = add_by_chord_line_with_frob(&mut ctx, &t4x, &t4y, &q4x_p, &q4y_p, &p4);
+        let res = add_by_chord_line_with_frob(
+            &mut ctx.inner_context("frob_t4"),
+            &t4x,
+            &t4y,
+            &q4x_p,
+            &q4y_p,
+            &p4,
+        );
         (t4x, t4y) = (res.0, res.1);
         let (t4_c0, t4_c1) = (res.2, res.3);
 
@@ -324,11 +339,11 @@ fn main_test() {
         );
 
         // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
-        define_input!(ctx, eval_frob_f0, Fq6, extract_eval_multi_f(0));
-        define_input!(ctx, eval_frob_f1, Fq6, extract_eval_multi_f(1));
-        define_input!(ctx, eval_frob_f2, Fq6, extract_eval_multi_f(2));
+        define_input!(ctx, eval_frob_f0, Fq2, extract_eval_multi_f(0));
+        define_input!(ctx, eval_frob_f1, Fq2, extract_eval_multi_f(1));
+        define_input!(ctx, eval_frob_f2, Fq2, extract_eval_multi_f(2));
         new_mul_fq12(
-            &mut ctx.inner_context("eval_frob"),
+            &mut ctx.inner_context("frob_multi"),
             [&f0, &f1, &f2],
             [&eval_multi.0, &eval_multi.1, &eval_multi.2],
             [&eval_frob_f0, &eval_frob_f1, &eval_frob_f2],
@@ -336,7 +351,14 @@ fn main_test() {
         (f0, f1, f2) = (eval_frob_f0, eval_frob_f1, eval_frob_f2);
 
         // t4 = t4 + (q4x_p2, q4y_p2)
-        let res = add_by_chord_line_with_frob(&mut ctx, &t4x, &t4y, &q4x_p2, &q4y_p2, &p4);
+        let res = add_by_chord_line_with_frob(
+            &mut ctx.inner_context("frob2_t4"),
+            &t4x,
+            &t4y,
+            &q4x_p2,
+            &q4y_p2,
+            &p4,
+        );
         (t4x, t4y) = (res.0, res.1);
         let (t4_c0, t4_c1) = (res.2, res.3);
 
@@ -360,11 +382,11 @@ fn main_test() {
         );
 
         // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
-        define_input!(ctx, eval_frob2_f0, Fq6, extract_eval_multi_f(0));
-        define_input!(ctx, eval_frob2_f1, Fq6, extract_eval_multi_f(1));
-        define_input!(ctx, eval_frob2_f2, Fq6, extract_eval_multi_f(2));
+        define_input!(ctx, eval_frob2_f0, Fq2, extract_eval_multi_f(0));
+        define_input!(ctx, eval_frob2_f1, Fq2, extract_eval_multi_f(1));
+        define_input!(ctx, eval_frob2_f2, Fq2, extract_eval_multi_f(2));
         new_mul_fq12(
-            &mut ctx.inner_context("eval_frob2"),
+            &mut ctx.inner_context("frob2_multi"),
             [&f0, &f1, &f2],
             [&eval_multi.0, &eval_multi.1, &eval_multi.2],
             [&eval_frob2_f0, &eval_frob2_f1, &eval_frob2_f2],
@@ -390,12 +412,12 @@ fn main_test() {
         );
 
         // check (f0, f1, f2).neg() + fixed
-        define_input!(ctx, f_fixed0, Fq6, extract_p1q1(0));
-        define_input!(ctx, f_fixed1, Fq6, extract_p1q1(1));
-        define_input!(ctx, f_fixed2, Fq6, extract_p1q1(2));
-        define_script!(ctx, f0_neg, Fq6, [f0], fq2_neg());
-        define_script!(ctx, f1_neg, Fq6, [f1], fq2_neg());
-        define_script!(ctx, f2_neg, Fq6, [f2], fq2_neg());
+        define_input!(ctx, f_fixed0, Fq2, extract_p1q1(0));
+        define_input!(ctx, f_fixed1, Fq2, extract_p1q1(1));
+        define_input!(ctx, f_fixed2, Fq2, extract_p1q1(2));
+        define_script!(ctx, f0_neg, Fq2, [f0], fq2_neg());
+        define_script!(ctx, f1_neg, Fq2, [f1], fq2_neg());
+        define_script!(ctx, f2_neg, Fq2, [f2], fq2_neg());
         define_script!(
             ctx,
             _check_f0,
@@ -424,20 +446,53 @@ fn main_test() {
     // compute all states
     let mut compute_ctx = RawProof::mock_proof().into();
     compute_states(&ctx, &mut compute_ctx);
-    {
-        let lock_guard = ctx.graph.lock().unwrap();
-        for i in 0..5 {
-            let node = lock_guard
-                .get_node(format!("groth16_verifierMSM{}_31_msm_acc", i))
-                .unwrap();
-            let state = &node.attributes.as_ref().unwrap().state;
-            let msm_result = state.get_g1();
-            info!("step {}, msm_result: {:?}", i, msm_result);
-        }
+
+    // query state
+    for i in 0..5 {
+        info!(
+            "step {}, msm_result: {:?}",
+            i,
+            get_state(&ctx, &format!("groth16_verifier_MSM_{}_31_msm_acc", i))
+        );
+    }
+
+    for i in 0..3 {
+        info!(
+            "f_final: {:?}",
+            get_state(&ctx, &format!("groth16_verifier_final__check_f{}", i))
+        );
     }
 
     info!("the cost time of computing states: {:?}", time.elapsed());
 
     ctx.write_local("/Users/yufengzhang/Workplace/bitlayer/graphml2mermaid/graph.graphml")
         .expect("write graph fail");
+}
+
+fn get_state(ctx: &GraphContext, name: &str) -> State {
+    let lock_guard = ctx.graph.lock().unwrap();
+    let node = match lock_guard.get_node(name.to_string()) {
+        Some(node) => node,
+        None => {
+            // try fuzzy match
+            let node_names = lock_guard.get_all_node_names();
+            let matcher = SkimMatcherV2::default();
+
+            // use Rayon to parallelize the fuzzy matching
+            let result = node_names
+                .par_iter()
+                .filter_map(|item| matcher.fuzzy_match(item, name).map(|score| (item, score)))
+                .max_by_key(|&(_, score)| score);
+
+            if let Some((best_match, _)) = result {
+                panic!(
+                    "Node not found: {}, but best fuzzy match: '{}'",
+                    name, best_match
+                );
+            } else {
+                panic!("Node not found: {}", name);
+            }
+        }
+    };
+    node.attributes.clone().unwrap().state
 }

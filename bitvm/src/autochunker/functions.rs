@@ -417,7 +417,7 @@ pub fn fq2_conjugate() -> (ComputeFn, ScriptFn) {
 // inputs
 fn add_chord_line_x() -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        assert_eq!(inputs.len(), 2);
+        assert_eq!(inputs.len(), 3);
         let t4x = inputs[0].get_fq2();
         let q4x = inputs[1].get_fq2();
         let lambda = inputs[2].get_fq2();

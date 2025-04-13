@@ -61,6 +61,8 @@ derive_more = "2.0"
 graphrs = "0.11.12"
 log = "0.4.26"
 test-log = "0.2.17"
+rayon = "1.7"
+fuzzy-matcher = "0.3"
 
 [profile.dev]
 opt-level = 3
