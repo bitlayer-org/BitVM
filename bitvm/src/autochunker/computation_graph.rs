@@ -1,5 +1,6 @@
+use super::primitve_functions::placeholder_script_fn;
+use crate::autochunker::compute_ctx::ComputeFn;
 use crate::autochunker::intermediate_state::State;
-use crate::autochunker::primitve_functions::ComputeFn;
 use core::borrow;
 use graphrs::readwrite;
 use graphrs::{Edge, Graph, Node};
@@ -8,6 +9,8 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use tqdm::refresh;
+pub type BitVMGraph = Arc<Mutex<Graph<String, NodeInfo>>>;
+use super::compute_ctx::{ComputeCtx, ScriptFn};
 
 // Define the `define_script` macro
 #[macro_export]
@@ -167,10 +170,6 @@ pub fn new_script<'a>(
     node
 }
 
-/// BitVM Graph
-use super::primitve_functions::{placeholder_script_fn, ComputeCtx, ScriptFn};
-pub type BitVMGraph = Arc<Mutex<Graph<String, NodeInfo>>>;
-
 pub struct GraphContext {
     pub graph: BitVMGraph,
     pub variable_prefix: String,
@@ -252,7 +251,7 @@ pub fn compute_states(graph_ctx: &GraphContext, ctx: &mut ComputeCtx) {
                 // if some states are not filled, put it to the end of queue
                 if !state.is_filled() {
                     // set_x.push_back(x.clone());
-                    warn!(
+                    debug!(
                         "the predecessor {} of {} are not all filled, drop it",
                         name, x
                     );

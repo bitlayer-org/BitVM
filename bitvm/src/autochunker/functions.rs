@@ -1,4 +1,4 @@
-use super::{computation_graph::*, intermediate_state::*, primitve_functions::*};
+use super::{computation_graph::*, compute_ctx::*, intermediate_state::*, primitve_functions::*};
 use crate::{define_input, define_overide_script, define_script};
 use ark_bn254::{Fq12, Fq2, Fq6, Fq6Config, G2Affine};
 use ark_ec::bn::BnConfig;
@@ -888,12 +888,12 @@ mod tests {
     use crate::autochunker::computation_graph::{
         compute_states, new_input, BitVMNode, GraphContext,
     };
+    use crate::autochunker::compute_ctx::ComputeCtx;
     use crate::autochunker::functions::{
         double_by_tangent_line, fq12_frobinus_map, mul_by_2char_neg, mul_by_char, new_mul_fq12,
         new_mul_fq6, new_square_fq6,
     };
     use crate::autochunker::intermediate_state::State;
-    use crate::autochunker::primitve_functions::ComputeCtx;
     use crate::autochunker::proof::RawProof;
     use crate::{define_input, define_overide_script, define_script};
     use ark_bn254::G2Affine;

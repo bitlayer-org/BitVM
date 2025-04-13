@@ -1,7 +1,7 @@
 // Rephrased from https://github.com/arkworks-rs/algebra/blob/master/ec/src/models/bn/g2.rs#L185
 // Cannot directly obtain G2 because of visibility
 
-use ark_bn254::Config;
+use ark_bn254::{Config, Fq12};
 use ark_ec::bn::g2::G2Prepared as ark_G2Prepared;
 use ark_ec::bn::{BnConfig, TwistType};
 use ark_ec::pairing::{MillerLoopOutput, Pairing, PairingOutput};
@@ -85,9 +85,7 @@ impl G2HomProjective {
 }
 
 impl Default for G2Prepared {
-    fn default() -> Self {
-        Self::from(ark_bn254::G2Affine::generator())
-    }
+    fn default() -> Self { Self::from(ark_bn254::G2Affine::generator()) }
 }
 
 impl G2Prepared {
@@ -190,9 +188,7 @@ impl From<ark_bn254::G2Affine> for G2Prepared {
 }
 
 impl From<ark_bn254::G2Projective> for G2Prepared {
-    fn from(q: ark_bn254::G2Projective) -> Self {
-        q.into_affine().into()
-    }
+    fn from(q: ark_bn254::G2Projective) -> Self { q.into_affine().into() }
 }
 
 impl From<ark_G2Prepared<ark_bn254::Config>> for G2Prepared {
@@ -215,27 +211,19 @@ impl From<ark_G2Prepared<ark_bn254::Config>> for G2Prepared {
 }
 
 impl<'a> From<&'a ark_bn254::G2Affine> for G2Prepared {
-    fn from(other: &'a ark_bn254::G2Affine) -> Self {
-        (*other).into()
-    }
+    fn from(other: &'a ark_bn254::G2Affine) -> Self { (*other).into() }
 }
 
 impl<'a> From<&'a ark_bn254::G2Projective> for G2Prepared {
-    fn from(q: &'a ark_bn254::G2Projective) -> Self {
-        q.into_affine().into()
-    }
+    fn from(q: &'a ark_bn254::G2Projective) -> Self { q.into_affine().into() }
 }
 
 impl<'a> From<&'a ark_G2Prepared<ark_bn254::Config>> for G2Prepared {
-    fn from(q: &'a ark_G2Prepared<ark_bn254::Config>) -> Self {
-        q.to_owned().into()
-    }
+    fn from(q: &'a ark_G2Prepared<ark_bn254::Config>) -> Self { q.to_owned().into() }
 }
 
 impl G2Prepared {
-    pub fn is_zero(&self) -> bool {
-        self.infinity
-    }
+    pub fn is_zero(&self) -> bool { self.infinity }
 }
 
 pub fn mul_by_char(r: ark_bn254::G2Affine) -> ark_bn254::G2Affine {
@@ -278,7 +266,12 @@ pub trait AffinePairing {
 pub struct BnAffinePairing;
 
 // Helper function to perform line function evaluation in affine coordinates
-fn ell_affine(f: &mut ark_bn254::Fq12, coeffs: &EllCoeff, xx: &ark_bn254::Fq, yy: &ark_bn254::Fq) {
+pub fn ell_affine(
+    f: &mut ark_bn254::Fq12,
+    coeffs: &EllCoeff,
+    xx: &ark_bn254::Fq,
+    yy: &ark_bn254::Fq,
+) {
     // c0 is a trivial value 1
     let c0 = coeffs.0;
     let mut c1 = coeffs.1;
