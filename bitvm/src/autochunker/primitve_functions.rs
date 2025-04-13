@@ -101,19 +101,6 @@ pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn,
     (Box::new(func), placeholder_script_fn())
 }
 
-pub fn extract_scalar(index: usize) -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
-        State::Fr(Some(
-            compute_ctx
-                .msm_scalars
-                .get(index)
-                .expect("index out of range")
-                .clone(),
-        ))
-    };
-    Box::new(func)
-}
-
 pub fn scalar_valid() -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);

@@ -137,8 +137,13 @@ fn main_test() {
             [f0, f1, f2] = new_square_fq6(&mut ctx.inner_context("square_f"), [&f0, &f1, &f2]);
 
             // evaluate t4 by tagent line
-            let res =
-                double_by_tangent_line(&mut ctx.inner_context("double_t4"), &t4x, &t4y, &p4_tweak);
+            let res = t4_double_by_tangent_line(
+                &mut ctx.inner_context("double_t4"),
+                &t4x,
+                &t4y,
+                &p4_tweak,
+                &Selector::Loop(i, LoopSelector::DoublePoint),
+            );
             (t4x, t4y) = (res.0, res.1);
             let (t4_c0, t4_c1) = (res.2, res.3);
 
@@ -148,6 +153,7 @@ fn main_test() {
                 &p3_tweak,
                 &p2_tweak,
                 eval_args::Mode::Double,
+                &Selector::Loop(i, LoopSelector::DoublePoint),
             );
 
             // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
@@ -191,7 +197,7 @@ fn main_test() {
             );
 
             // if ate bit is 1, we need to add the point, else we need to subtract the point
-            let res = add_by_chord_line(
+            let res = t4_add_by_chord_line(
                 &mut ctx.inner_context("add_t4"),
                 &t4x,
                 &t4y,
@@ -200,6 +206,7 @@ fn main_test() {
                 &q4y_neg,
                 &p3_tweak,
                 bit,
+                &Selector::Loop(i, LoopSelector::AddPoint),
             );
             (t4x, t4y) = (res.0, res.1);
             let (t4_c0, t4_c1) = (res.2, res.3);
@@ -214,6 +221,7 @@ fn main_test() {
                 } else {
                     eval_args::IsNegBit::Neg
                 }),
+                &Selector::Loop(i, LoopSelector::AddPoint),
             );
 
             // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
@@ -286,13 +294,14 @@ fn main_test() {
         let (q4x_p3, q4y_p3) = frob_point_mul_by_char3(&mut ctx.inner_context("q4_3p"), &q4x, &q4y);
 
         // t4 = t4 + (q4x_p, q4y_p)
-        let res = add_by_chord_line_with_frob(
+        let res = t4_add_by_chord_line_with_frob(
             &mut ctx.inner_context("frob_t4"),
             &t4x,
             &t4y,
             &q4x_p,
             &q4y_p,
             &p4,
+            &Selector::FrobPoint(1),
         );
         (t4x, t4y) = (res.0, res.1);
         let (t4_c0, t4_c1) = (res.2, res.3);
@@ -325,13 +334,14 @@ fn main_test() {
         );
 
         // t4 = t4 + (q4x_p2, q4y_p2)
-        let res = add_by_chord_line_with_frob(
+        let res = t4_add_by_chord_line_with_frob(
             &mut ctx.inner_context("frob2_t4"),
             &t4x,
             &t4y,
             &q4x_p2,
             &q4y_p2,
             &p4,
+            &Selector::FrobPoint(1),
         );
         (t4x, t4y) = (res.0, res.1);
         let (t4_c0, t4_c1) = (res.2, res.3);
