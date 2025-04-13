@@ -18,6 +18,7 @@ use core::ops::Neg;
 use itertools::Itertools;
 use log::{debug, error, info, warn};
 use num_bigint::BigUint;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub type ComputeFn = Box<dyn Fn(&mut ComputeCtx, Vec<State>) -> State>;
@@ -29,19 +30,19 @@ pub struct ComputeCtx {
     pub msm_points_from_pk: Vec<G1Affine>,
     pub msm_scalars: Vec<Fr>,
     pub vky0: G1Affine,
-    pub p1q1: Fq6,                // immutable
-    pub p2: G1Affine,             // immutable
-    pub p4: G1Affine,             // immutable
-    pub q4: G2Affine,             // immutable
-    pub q3: G2Affine,             // immutable
-    pub q2: G2Affine,             // immutable
-    pub t4: G2Affine,             // mutable
-    pub t3: G2Affine,             // mutable
-    pub t2: G2Affine,             // mutable
-    pub f: Option<Fq6>,           // mutable
-    pub evaluate_p4: Option<Fq6>, // mutable, the result of evaluate line of p4
-    pub evaluate_p3: Option<Fq6>, // mutable, the result of evaluate line of p3
-    pub evaluate_p2: Option<Fq6>, // mutable, the result of evaluate line of p2
+    pub p1q1: Fq6,                 // immutable
+    pub p2: G1Affine,              // immutable
+    pub p4: G1Affine,              // immutable
+    pub q4: G2Affine,              // immutable
+    pub q3: G2Affine,              // immutable
+    pub q2: G2Affine,              // immutable
+    pub t4: G2Affine,              // mutable
+    pub t3: G2Affine,              // mutable
+    pub t2: G2Affine,              // mutable
+    pub f: HashMap<Selector, Fq6>, // mutable
+    pub evaluate_p4: Option<Fq6>,  // mutable, the result of evaluate line of p4
+    pub evaluate_p3: Option<Fq6>,  // mutable, the result of evaluate line of p3
+    pub evaluate_p2: Option<Fq6>,  // mutable, the result of evaluate line of p2
     pub c: Fq6,
     pub c_inv: Fq6,
 }
@@ -104,13 +105,13 @@ impl From<RawProof> for ComputeCtx {
 
         let f = pairing
             .multi_miller_loop_affine_with_c([p1, p2, p3, p4], [q1, q2, q3, q4], c, c_inv)
-            .0;
+            .0
+             .0;
         assert_eq!(f, result);
 
-        let f = pairing
-            .multi_miller_loop_affine_with_c([p2, p3, p4], [q2, q3, q4], c, c_inv)
-            .0;
-        assert_eq!(f * f_fixed, result);
+        let (f, f_map) =
+            pairing.multi_miller_loop_affine_with_c([p2, p3, p4], [q2, q3, q4], c, c_inv);
+        assert_eq!(f.0 * f_fixed, result);
 
         if result.c1 != Fq6::ZERO {
             error!(
@@ -140,7 +141,7 @@ impl From<RawProof> for ComputeCtx {
             q4: q4,
             q3: q3,
             q2: q2,
-            f: Some(c_inv.c1 / c_inv.c0),
+            f: f_map,
             evaluate_p4: None,
             evaluate_p3: None,
             evaluate_p2: None,
@@ -155,7 +156,7 @@ impl BnAffinePairing {
         b: impl IntoIterator<Item = impl Into<G2Prepared>>,
         c: Fq12,
         c_inv: Fq12,
-    ) -> MillerLoopOutput<ark_bn254::Bn254> {
+    ) -> (MillerLoopOutput<ark_bn254::Bn254>, HashMap<Selector, Fq6>) {
         let mut pairs = a
             .into_iter()
             .zip_eq(b)
@@ -174,18 +175,30 @@ impl BnAffinePairing {
             })
             .collect::<Vec<_>>();
 
+        let mut f_map: HashMap<Selector, Fq6> = HashMap::new();
+
         let mut f = cfg_chunks_mut!(pairs, 4)
             .map(|pairs| {
+                #[allow(unused_assignments)]
                 let mut f = ark_bn254::Fq12::one();
+
                 f = c_inv;
+                f_map.insert(Selector::Initial, f.c1 / f.c0);
+
                 for i in (1..Config::ATE_LOOP_COUNT.len()).rev() {
                     // if i != Config::ATE_LOOP_COUNT.len() - 1 {
                     f.square_in_place();
+                    f_map.insert(Selector::Loop(i, LoopSelector::SquareF), f.c1 / f.c0);
+
                     // }
 
                     for (coeff_1, coeff_2, coeffs) in pairs.iter_mut() {
                         ell_affine(&mut f, &coeffs.next().unwrap(), coeff_1, coeff_2);
                     }
+                    f_map.insert(
+                        Selector::Loop(i, LoopSelector::MultiSquareEval),
+                        f.c1 / f.c0,
+                    );
 
                     let bit = Config::ATE_LOOP_COUNT[i - 1];
 
@@ -194,12 +207,14 @@ impl BnAffinePairing {
                     } else if bit == -1 {
                         f = f * c;
                     }
+                    f_map.insert(Selector::Loop(i, LoopSelector::MultiC), f.c1 / f.c0);
 
                     if bit == 1 || bit == -1 {
                         for (coeff_1, coeff_2, coeffs) in pairs.iter_mut() {
                             ell_affine(&mut f, &coeffs.next().unwrap(), coeff_1, coeff_2);
                         }
                     }
+                    f_map.insert(Selector::Loop(i, LoopSelector::MultiAddEval), f.c1 / f.c0);
                 }
                 f
             })
@@ -212,18 +227,132 @@ impl BnAffinePairing {
         let c_invp = c_inv.frobenius_map(1);
         let c_p2 = c.frobenius_map(2);
         let c_invp3 = c_inv.frobenius_map(3);
-        f = f * c_invp * c_p2 * c_invp3;
+
+        f = f * c_invp;
+        f_map.insert(Selector::CFrob(1), f.c1 / f.c0);
+
+        f = f * c_p2;
+        f_map.insert(Selector::CFrob(2), f.c1 / f.c0);
+
+        f = f * c_invp3;
+        f_map.insert(Selector::CFrob(3), f.c1 / f.c0);
 
         for (coeff_1, coeff_2, coeffs) in &mut pairs {
             ell_affine(&mut f, &coeffs.next().unwrap(), coeff_1, coeff_2);
         }
+        f_map.insert(Selector::MultiFrobEval(1), f.c1 / f.c0);
 
         for (coeff_1, coeff_2, coeffs) in &mut pairs {
             ell_affine(&mut f, &coeffs.next().unwrap(), coeff_1, coeff_2);
         }
+        f_map.insert(Selector::MultiFrobEval(2), f.c1 / f.c0);
 
-        MillerLoopOutput(f)
+        (MillerLoopOutput(f), f_map)
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Selector {
+    Initial,                   // initial state
+    Loop(usize, LoopSelector), // i in (1..Config::ATE_LOOP_COUNT.len()).rev()
+    CFrob(usize),              // 1, 2, 3
+    MultiFrobEval(usize),      // 1, 2
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum LoopSelector {
+    SquareF,
+    MultiSquareEval,
+    MultiC,
+    MultiAddEval,
+}
+
+// extract proof.c
+pub fn extract_p2() -> ComputeFn {
+    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
+        State::G1(Some(compute_ctx.p2.clone()))
+    };
+    Box::new(func)
+}
+
+pub fn extract_q4x() -> ComputeFn {
+    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
+        State::Fq2(Some(compute_ctx.q4.x().unwrap()))
+    };
+    Box::new(func)
+}
+
+pub fn extract_q4y() -> ComputeFn {
+    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
+        State::Fq2(Some(compute_ctx.q4.y().unwrap()))
+    };
+    Box::new(func)
+}
+
+// extrac proof.a
+pub fn extract_p4() -> ComputeFn {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        State::G1(Some(compute_ctx.p4.clone()))
+    };
+    Box::new(func)
+}
+
+pub fn extract_c(idx: usize) -> ComputeFn {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        match idx {
+            0 => State::Fq2(Some(compute_ctx.c.c0)),
+            1 => State::Fq2(Some(compute_ctx.c.c1)),
+            2 => State::Fq2(Some(compute_ctx.c.c2)),
+            _ => panic!("index out of range"),
+        }
+    };
+    Box::new(func)
+}
+
+pub fn extract_t4x() -> ComputeFn {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        State::Fq2(Some(compute_ctx.t4.x().unwrap()))
+    };
+    Box::new(func)
+}
+
+pub fn extract_t4y() -> ComputeFn {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        State::Fq2(Some(compute_ctx.t4.y().unwrap()))
+    };
+    Box::new(func)
+}
+
+pub fn extract_line_evaluation_g(index: usize) -> ComputeFn {
+    assert!(index < 3);
+    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
+        let evaluate_p2 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p2.unwrap());
+        let evaluate_p3 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p3.unwrap());
+        let evaluate_p4 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p4.unwrap());
+
+        let result = evaluate_p2 * evaluate_p3 * evaluate_p4;
+        let g = result.c1 / result.c0;
+        let select_array = [g.c0, g.c1, g.c2];
+        State::Fq2(Some(Fq2::from(select_array[index])))
+    })
+}
+
+pub fn extract_eval_multi_f(index: usize, selector: Selector) -> ComputeFn {
+    assert!(index < 3);
+    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
+        let f = compute_ctx.f.get(&selector).unwrap();
+        let select_array = [f.c0, f.c1, f.c2];
+        State::Fq2(Some(Fq2::from(select_array[index])))
+    })
+}
+
+pub fn extract_p1q1(index: usize) -> ComputeFn {
+    assert!(index < 3);
+    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
+        let g = compute_ctx.p1q1.clone();
+        let select_array = [g.c0, g.c1, g.c2];
+        State::Fq2(Some(Fq2::from(select_array[index])))
+    })
 }
 
 mod tests {

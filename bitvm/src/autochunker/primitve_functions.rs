@@ -123,28 +123,6 @@ pub fn scalar_valid() -> (ComputeFn, ScriptFn) {
     (Box::new(func), placeholder_script_fn())
 }
 
-// extract proof.c
-pub fn extract_p2() -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
-        State::G1(Some(compute_ctx.p2.clone()))
-    };
-    Box::new(func)
-}
-
-pub fn extract_q4x() -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
-        State::Fq2(Some(compute_ctx.q4.x().unwrap()))
-    };
-    Box::new(func)
-}
-
-pub fn extract_q4y() -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
-        State::Fq2(Some(compute_ctx.q4.y().unwrap()))
-    };
-    Box::new(func)
-}
-
 // check validation of a G1 point
 pub fn check_g1_point() -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
@@ -170,40 +148,6 @@ pub fn tweak_point() -> (ComputeFn, ScriptFn) {
     (Box::new(func), placeholder_script_fn())
 }
 
-// extrac proof.a
-pub fn extract_p4() -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        State::G1(Some(compute_ctx.p4.clone()))
-    };
-    Box::new(func)
-}
-
-pub fn extract_c(idx: usize) -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        match idx {
-            0 => State::Fq2(Some(compute_ctx.c.c0)),
-            1 => State::Fq2(Some(compute_ctx.c.c1)),
-            2 => State::Fq2(Some(compute_ctx.c.c2)),
-            _ => panic!("index out of range"),
-        }
-    };
-    Box::new(func)
-}
-
-pub fn extract_t4x() -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        State::Fq2(Some(compute_ctx.t4.x().unwrap()))
-    };
-    Box::new(func)
-}
-
-pub fn extract_t4y() -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        State::Fq2(Some(compute_ctx.t4.y().unwrap()))
-    };
-    Box::new(func)
-}
-
 pub fn neg_fq2() -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
@@ -211,96 +155,6 @@ pub fn neg_fq2() -> (ComputeFn, ScriptFn) {
         State::Fq2(Some(fq2.neg()))
     };
     (Box::new(func), placeholder_script_fn())
-}
-
-pub fn extract_line_evaluation_g(index: usize) -> ComputeFn {
-    assert!(index < 3);
-    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
-        let evaluate_p2 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p2.unwrap());
-        let evaluate_p3 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p3.unwrap());
-        let evaluate_p4 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p4.unwrap());
-
-        let result = evaluate_p2 * evaluate_p3 * evaluate_p4;
-        let g = result.c1 / result.c0;
-        let select_array = [g.c0, g.c1, g.c2];
-        State::Fq2(Some(Fq2::from(select_array[index])))
-    })
-}
-
-pub fn extract_eval_multi_f(index: usize) -> ComputeFn {
-    assert!(index < 3);
-    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
-        let evaluate_p2 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p2.unwrap());
-        let evaluate_p3 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p3.unwrap());
-        let evaluate_p4 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p4.unwrap());
-        let evaluations = evaluate_p2 * evaluate_p3 * evaluate_p4;
-
-        let f = Fq12::new(Fq6::from(1), compute_ctx.f.unwrap());
-
-        let result = f * evaluations;
-        let g = result.c1 / result.c0;
-
-        // update f
-        compute_ctx.f = Some(g.clone());
-
-        let select_array = [g.c0, g.c1, g.c2];
-        State::Fq2(Some(Fq2::from(select_array[index])))
-    })
-}
-
-pub fn extract_fd(index: usize, bit: i8) -> ComputeFn {
-    assert!(index < 3);
-    assert!(bit == -1 || bit == 1);
-    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
-        let f = Fq12::new(Fq6::from(1), compute_ctx.f.unwrap());
-        let d = if bit == -1 {
-            compute_ctx.c
-        } else {
-            compute_ctx.c_inv
-        };
-        let d = Fq12::new(Fq6::from(1), d);
-
-        let result = f * d;
-        let g = result.c1 / result.c0;
-
-        // update f
-        compute_ctx.f = Some(g.clone());
-
-        let select_array = [g.c0, g.c1, g.c2];
-        State::Fq2(Some(Fq2::from(select_array[index])))
-    })
-}
-
-pub fn extract_frob_multi(index: usize, power: usize, is_neg: bool) -> ComputeFn {
-    assert!(index < 3);
-    assert!(power <= 3 && power >= 0);
-    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
-        let f = Fq12::new(Fq6::from(1), compute_ctx.f.unwrap());
-        let frob = if is_neg {
-            Fq12::new(Fq6::from(1), compute_ctx.c_inv)
-        } else {
-            Fq12::new(Fq6::from(1), compute_ctx.c)
-        };
-        let frob = frob.frobenius_map(power);
-
-        let result = f * frob;
-        let g = result.c1 / result.c0;
-
-        // update f
-        compute_ctx.f = Some(g.clone());
-
-        let select_array = [g.c0, g.c1, g.c2];
-        State::Fq2(Some(Fq2::from(select_array[index])))
-    })
-}
-
-pub fn extract_p1q1(index: usize) -> ComputeFn {
-    assert!(index < 3);
-    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
-        let g = compute_ctx.p1q1.clone();
-        let select_array = [g.c0, g.c1, g.c2];
-        State::Fq2(Some(Fq2::from(select_array[index])))
-    })
 }
 
 pub fn fq2_mul_lc4() -> (ComputeFn, ScriptFn) {

@@ -1,4 +1,5 @@
 use crate::autochunker::computation_graph::*;
+use crate::autochunker::compute_ctx::*;
 use crate::autochunker::functions::*;
 use crate::{define_input, define_overide_script, define_script};
 use std::sync::Arc;
@@ -132,6 +133,7 @@ fn main_test() {
             let mut ctx = ctx.inner_context(&format!("ate_loop_{}", i));
 
             // square f
+            // TODO: square fq12
             [f0, f1, f2] = new_square_fq6(&mut ctx.inner_context("square_f"), [&f0, &f1, &f2]);
 
             // evaluate t4 by tagent line
@@ -160,16 +162,12 @@ fn main_test() {
             );
 
             // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
-            define_input!(ctx, square_eval_f0, Fq2, extract_eval_multi_f(0));
-            define_input!(ctx, square_eval_f1, Fq2, extract_eval_multi_f(1));
-            define_input!(ctx, sqaure_eval_f2, Fq2, extract_eval_multi_f(2));
-            new_mul_fq12(
+            [f0, f1, f2] = new_mul_fq12(
                 &mut ctx.inner_context("double_multi"),
                 [&f0, &f1, &f2],
                 [&eval_multi.0, &eval_multi.1, &eval_multi.2],
-                [&square_eval_f0, &square_eval_f1, &sqaure_eval_f2],
+                &Selector::Loop(i, LoopSelector::MultiSquareEval),
             );
-            (f0, f1, f2) = (square_eval_f0, square_eval_f1, sqaure_eval_f2);
 
             // if ate bit is 1, we need to multiply the c, else we need to multiply the c_inv
             let bit = Bn254Config::ATE_LOOP_COUNT[i];
@@ -184,17 +182,13 @@ fn main_test() {
                 (&c_inv0, &c_inv1, &c_inv2)
             };
 
-            // (fd0, fd1, fd2) = (f0, f1, f2) * (d0, d1, d2)
-            define_input!(ctx, fd0, Fq2, extract_fd(0, bit));
-            define_input!(ctx, fd1, Fq2, extract_fd(1, bit));
-            define_input!(ctx, fd2, Fq2, extract_fd(1, bit));
-            new_mul_fq12(
-                &mut ctx.inner_context("fd"),
+            // (f0, f1, f2) = (f0, f1, f2) * (d0, d1, d2)
+            [f0, f1, f2] = new_mul_fq12(
+                &mut ctx.inner_context("c_multi"),
                 [&f0, &f1, &f2],
                 [d0, d1, d2],
-                [&fd0, &fd1, &fd2],
+                &Selector::Loop(i, LoopSelector::MultiC),
             );
-            (f0, f1, f2) = (fd0, fd1, fd2);
 
             // if ate bit is 1, we need to add the point, else we need to subtract the point
             let res = add_by_chord_line(
@@ -233,17 +227,13 @@ fn main_test() {
                 &t2_c1,
             );
 
-            // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
-            define_input!(ctx, add_eval_f0, Fq2, extract_eval_multi_f(0));
-            define_input!(ctx, add_eval_f1, Fq2, extract_eval_multi_f(1));
-            define_input!(ctx, add_eval_f2, Fq2, extract_eval_multi_f(2));
-            new_mul_fq12(
-                &mut ctx.inner_context("add_multi"),
+            // (f0, f1, f2) = (f0, f1, f2) * (eval_multi);
+            [f0, f1, f2] = new_mul_fq12(
+                &mut ctx.inner_context("c_multi"),
                 [&f0, &f1, &f2],
                 [&eval_multi.0, &eval_multi.1, &eval_multi.2],
-                [&add_eval_f0, &add_eval_f1, &add_eval_f2],
+                &Selector::Loop(i, LoopSelector::MultiAddEval),
             );
-            (f0, f1, f2) = (add_eval_f0, add_eval_f1, add_eval_f2);
         }
         (f0, f1, f2)
     };
@@ -263,40 +253,28 @@ fn main_test() {
             fq12_frobinus_map(&mut ctx.inner_context("3p"), [&c_inv0, &c_inv1, &c_inv2], 3);
 
         // f = f * c_inv^p
-        define_input!(ctx, fp0, Fq2, extract_frob_multi(0, 1, use_neg));
-        define_input!(ctx, fp1, Fq2, extract_frob_multi(1, 1, use_neg));
-        define_input!(ctx, fp2, Fq2, extract_frob_multi(2, 1, use_neg));
-        new_mul_fq12(
+        [f0, f1, f2] = new_mul_fq12(
             &mut ctx.inner_context("fp"),
             [&f0, &f1, &f2],
             [&cinv_p[0], &cinv_p[1], &cinv_p[2]],
-            [&fp0, &fp1, &fp2],
+            &Selector::CFrob(1),
         );
-        (f0, f1, f2) = (fp0, fp1, fp2);
 
         // f = f * c^2p
-        define_input!(ctx, f2p0, Fq2, extract_frob_multi(0, 2, use_pos));
-        define_input!(ctx, f2p1, Fq2, extract_frob_multi(1, 2, use_pos));
-        define_input!(ctx, f2p2, Fq2, extract_frob_multi(2, 2, use_pos));
-        new_mul_fq12(
-            &mut ctx.inner_context("f2p"),
+        [f0, f1, f2] = new_mul_fq12(
+            &mut ctx.inner_context("fp2"),
             [&f0, &f1, &f2],
             [&c_p2[0], &c_p2[1], &c_p2[2]],
-            [&f2p0, &f2p1, &f2p2],
+            &Selector::CFrob(2),
         );
-        (f0, f1, f2) = (f2p0, f2p1, f2p2);
 
         // f = f * c_inv^3p
-        define_input!(ctx, f3p0, Fq2, extract_frob_multi(0, 3, use_neg));
-        define_input!(ctx, f3p1, Fq2, extract_frob_multi(1, 3, use_neg));
-        define_input!(ctx, f3p2, Fq2, extract_frob_multi(2, 3, use_neg));
-        new_mul_fq12(
-            &mut ctx.inner_context("f3p"),
+        [f0, f1, f2] = new_mul_fq12(
+            &mut ctx.inner_context("fp3"),
             [&f0, &f1, &f2],
             [&cinv_p3[0], &cinv_p3[1], &cinv_p3[2]],
-            [&f3p0, &f3p1, &f3p2],
+            &Selector::CFrob(3),
         );
-        (f0, f1, f2) = (f3p0, f3p1, f3p2);
 
         // (q4x_p, q4y_p) = (q4x, q4y)p
         let (q4x_p, q4y_p) = frob_point_mul_by_char(&mut ctx.inner_context("q4_p"), &q4x, &q4y);
@@ -339,16 +317,12 @@ fn main_test() {
         );
 
         // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
-        define_input!(ctx, eval_frob_f0, Fq2, extract_eval_multi_f(0));
-        define_input!(ctx, eval_frob_f1, Fq2, extract_eval_multi_f(1));
-        define_input!(ctx, eval_frob_f2, Fq2, extract_eval_multi_f(2));
-        new_mul_fq12(
+        [f0, f1, f2] = new_mul_fq12(
             &mut ctx.inner_context("frob_multi"),
             [&f0, &f1, &f2],
             [&eval_multi.0, &eval_multi.1, &eval_multi.2],
-            [&eval_frob_f0, &eval_frob_f1, &eval_frob_f2],
+            &Selector::MultiFrobEval(1),
         );
-        (f0, f1, f2) = (eval_frob_f0, eval_frob_f1, eval_frob_f2);
 
         // t4 = t4 + (q4x_p2, q4y_p2)
         let res = add_by_chord_line_with_frob(
@@ -382,16 +356,12 @@ fn main_test() {
         );
 
         // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
-        define_input!(ctx, eval_frob2_f0, Fq2, extract_eval_multi_f(0));
-        define_input!(ctx, eval_frob2_f1, Fq2, extract_eval_multi_f(1));
-        define_input!(ctx, eval_frob2_f2, Fq2, extract_eval_multi_f(2));
-        new_mul_fq12(
+        [f0, f1, f2] = new_mul_fq12(
             &mut ctx.inner_context("frob2_multi"),
             [&f0, &f1, &f2],
             [&eval_multi.0, &eval_multi.1, &eval_multi.2],
-            [&eval_frob2_f0, &eval_frob2_f1, &eval_frob2_f2],
+            &Selector::MultiFrobEval(2),
         );
-        (f0, f1, f2) = (eval_frob2_f0, eval_frob2_f1, eval_frob2_f2);
 
         // check (t4x, t4y).neg() == 3q * (q4x, q4y)
         define_script!(ctx, t4y_neg, Fq2, [t4y], fq2_neg());

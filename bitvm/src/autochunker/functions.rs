@@ -10,8 +10,22 @@ use eval_args::T3OrT2;
 use serde::de;
 use std::ops::Neg;
 
-// check a * b is equal to c
 pub fn new_mul_fq12(
+    ctx: &mut GraphContext,
+    a: [&BitVMNode; 3],
+    b: [&BitVMNode; 3],
+    selector: &Selector,
+) -> [BitVMNode; 3] {
+    define_input!(ctx, c0, Fq2, extract_eval_multi_f(0, selector.clone()));
+    define_input!(ctx, c1, Fq2, extract_eval_multi_f(1, selector.clone()));
+    define_input!(ctx, c2, Fq2, extract_eval_multi_f(2, selector.clone()));
+    // check a * b is equal to c
+    new_mul_fq12_with_hint(ctx, a, b, [&c0, &c1, &c2]);
+    [c0, c1, c2]
+}
+
+// check a * b is equal to c
+pub fn new_mul_fq12_with_hint(
     ctx: &mut GraphContext,
     a: [&BitVMNode; 3],
     b: [&BitVMNode; 3],
@@ -891,7 +905,7 @@ mod tests {
     use crate::autochunker::compute_ctx::ComputeCtx;
     use crate::autochunker::functions::{
         double_by_tangent_line, fq12_frobinus_map, mul_by_2char_neg, mul_by_char, new_mul_fq12,
-        new_mul_fq6, new_square_fq6,
+        new_mul_fq12_with_hint, new_mul_fq6, new_square_fq6,
     };
     use crate::autochunker::intermediate_state::State;
     use crate::autochunker::proof::RawProof;
@@ -1070,7 +1084,7 @@ mod tests {
         let [b0, b1, b2] = new_fq6(&mut ctx.inner_context("b"), b);
         let [c0, c1, c2] = new_fq6(&mut ctx.inner_context("c"), c);
 
-        new_mul_fq12(&mut ctx, [&a0, &a1, &a2], [&b0, &b1, &b2], [&c0, &c1, &c2]);
+        new_mul_fq12_with_hint(&mut ctx, [&a0, &a1, &a2], [&b0, &b1, &b2], [&c0, &c1, &c2]);
 
         // compute states
         let mut compute_ctx = RawProof::mock_proof().into();
