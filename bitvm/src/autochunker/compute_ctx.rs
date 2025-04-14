@@ -1,4 +1,4 @@
-use crate::autochunker::functions::mul_by_char;
+use crate::autochunker::primitve_functions::{mul_by_2char_neg, mul_by_char};
 use crate::autochunker::{intermediate_state::*, proof::RawProof};
 use crate::bn254::ell_coeffs::{ell_affine, AffinePairing, BnAffinePairing, G2Prepared};
 use crate::bn254::fp254impl::Fp254Impl;
@@ -14,6 +14,7 @@ use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{AdditiveGroup, Field, One, PrimeField};
 use ark_ff::{CyclotomicMultSubgroup, Fp6Config};
 use ark_std::cfg_chunks_mut;
+use bitcoin::hashes::hash160::Hash;
 use bitcoin_script::{script, Script};
 use core::ops::Neg;
 use itertools::Itertools;
@@ -21,8 +22,6 @@ use log::{debug, error, info, warn};
 use num_bigint::BigUint;
 use std::collections::HashMap;
 use std::sync::Arc;
-
-use super::functions::mul_by_2char_neg;
 
 pub type ComputeFn = Box<dyn Fn(&mut ComputeCtx, Vec<State>) -> State>;
 pub type ScriptFn = Box<dyn Fn(&mut ComputeCtx, Vec<State>) -> (Script, Vec<Vec<u8>>)>;
@@ -41,9 +40,7 @@ pub struct ComputeCtx {
     pub q2: G2Affine,                               // immutable
     pub tpoints: HashMap<TPointSelector, G2Affine>, // mutable
     pub f: HashMap<Selector, Fq6>,                  // mutable
-    pub evaluate_p4: Option<Fq6>,                   // mutable, the result of evaluate line of p4
-    pub evaluate_p3: Option<Fq6>,                   // mutable, the result of evaluate line of p3
-    pub evaluate_p2: Option<Fq6>,                   // mutable, the result of evaluate line of p2
+    pub line_evaluation: HashMap<Selector, Fq6>,    // mutable, eval(p2) * eval(p3) * eval(p4)
     pub c: Fq6,
     pub c_inv: Fq6,
 }
@@ -107,6 +104,7 @@ impl From<RawProof> for ComputeCtx {
         // check the result of pairing
         let mut f_map: HashMap<Selector, Fq6> = HashMap::new();
         let mut tpoint_map: HashMap<TPointSelector, G2Affine> = HashMap::new();
+        let mut line_evaluation: HashMap<Selector, Fq6> = HashMap::new();
         let (mut t2, mut t3, mut t4) = (q2, q3, q4);
 
         let f = {
@@ -151,9 +149,19 @@ impl From<RawProof> for ComputeCtx {
                         t3,
                         t4,
                     );
+
+                    // line evaluation
+                    let mut g = f.clone();
                     for (coeff_1, coeff_2, coeffs) in pairs.iter_mut() {
                         ell_affine(&mut f, &coeffs.next().unwrap(), coeff_1, coeff_2);
                     }
+                    g = f / g; // g = eval(p2) * eval(p3) * eval(p4)
+                    line_evaluation.insert(
+                        Selector::Loop(i, LoopSelector::MultiSquareEval),
+                        g.c1 / g.c0,
+                    );
+
+                    // update t points
                     (t2, t3, t4) = (
                         (t2 + t2).into_affine(),
                         (t3 + t3).into_affine(),
@@ -182,10 +190,16 @@ impl From<RawProof> for ComputeCtx {
                             t4,
                         );
 
+                        // line evaluation
+                        let mut g = f;
                         for (coeff_1, coeff_2, coeffs) in pairs.iter_mut() {
                             ell_affine(&mut f, &coeffs.next().unwrap(), coeff_1, coeff_2);
                         }
+                        g = f / g;
+                        line_evaluation
+                            .insert(Selector::Loop(i, LoopSelector::MultiAddEval), g.c1 / g.c0);
 
+                        // update t points
                         if bit == 1 {
                             t2 = (t2 + q2).into_affine();
                             t3 = (t3 + q3).into_affine();
@@ -218,19 +232,27 @@ impl From<RawProof> for ComputeCtx {
             f = f * c_invp3;
             f_map.insert(Selector::CFrob(3), f.c1 / f.c0);
 
+            // frob points
             tpoint_map_insert(&mut tpoint_map, Selector::FrobPoint(1), t2, t3, t4);
+            let mut g = f;
             for (coeff_1, coeff_2, coeffs) in &mut pairs {
                 ell_affine(&mut f, &coeffs.next().unwrap(), coeff_1, coeff_2);
             }
+            g = f / g;
+            line_evaluation.insert(Selector::MultiFrobEval(1), g.c1 / g.c0);
             t2 = (t2 + mul_by_char(q2)).into_affine();
             t3 = (t3 + mul_by_char(q3)).into_affine();
             t4 = (t4 + mul_by_char(q4)).into_affine();
             f_map.insert(Selector::MultiFrobEval(1), f.c1 / f.c0);
 
+            // frob2 points
             tpoint_map_insert(&mut tpoint_map, Selector::FrobPoint(2), t2, t3, t4);
+            let mut g = f;
             for (coeff_1, coeff_2, coeffs) in &mut pairs {
                 ell_affine(&mut f, &coeffs.next().unwrap(), coeff_1, coeff_2);
             }
+            g = f / g;
+            line_evaluation.insert(Selector::MultiFrobEval(2), g.c1 / g.c0);
             f_map.insert(Selector::MultiFrobEval(2), f.c1 / f.c0);
 
             f
@@ -265,9 +287,7 @@ impl From<RawProof> for ComputeCtx {
             q3: q3,
             q2: q2,
             f: f_map,
-            evaluate_p4: None,
-            evaluate_p3: None,
-            evaluate_p2: None,
+            line_evaluation,
         }
     }
 }
@@ -423,15 +443,10 @@ pub fn extract_c(idx: usize) -> ComputeFn {
     Box::new(func)
 }
 
-pub fn extract_line_evaluation_g(index: usize) -> ComputeFn {
+pub fn extract_line_evaluation_g(index: usize, selector: Selector) -> ComputeFn {
     assert!(index < 3);
     Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
-        let evaluate_p2 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p2.unwrap());
-        let evaluate_p3 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p3.unwrap());
-        let evaluate_p4 = Fq12::new(Fq6::from(1), compute_ctx.evaluate_p4.unwrap());
-
-        let result = evaluate_p2 * evaluate_p3 * evaluate_p4;
-        let g = result.c1 / result.c0;
+        let g = compute_ctx.line_evaluation.get(&selector).unwrap();
         let select_array = [g.c0, g.c1, g.c2];
         State::Fq2(Some(Fq2::from(select_array[index])))
     })

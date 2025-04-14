@@ -163,6 +163,7 @@ fn main_test() {
                 &t3_c1,
                 &t2_c0,
                 &t2_c1,
+                &Selector::Loop(i, LoopSelector::MultiSquareEval),
             );
 
             // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
@@ -227,6 +228,7 @@ fn main_test() {
                 &t3_c1,
                 &t2_c0,
                 &t2_c1,
+                &Selector::Loop(i, LoopSelector::MultiAddEval),
             );
 
             // (f0, f1, f2) = (f0, f1, f2) * (eval_multi);
@@ -318,6 +320,7 @@ fn main_test() {
             &t3_c1,
             &t2_c0,
             &t2_c1,
+            &Selector::MultiFrobEval(1),
         );
 
         // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);
@@ -359,6 +362,7 @@ fn main_test() {
             &t3_c1,
             &t2_c0,
             &t2_c1,
+            &Selector::MultiFrobEval(2),
         );
 
         // (eval_multi_f0, eval_multi_f1, eval_multi_f2) = (f0, f1, f2) * (eval_multi);

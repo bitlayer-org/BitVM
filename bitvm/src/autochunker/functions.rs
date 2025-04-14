@@ -6,7 +6,6 @@ use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::MontFp;
 use ark_ff::{Field, Fp12Config, Fp6Config};
 use bitcoin::pow;
-use eval_args::T3OrT2;
 use serde::de;
 use std::ops::Neg;
 
@@ -243,7 +242,7 @@ pub fn t4_double_by_tangent_line(
     // t4x' = \lambda^2 - 2 \cdot t4x
     define_script!(ctx, new_t4x, Fq2, [t4x, lambda], double_tangent_line_x());
 
-    // t4y' = - (v + \lambda * t4x') and update t4
+    // t4y' = - (v + \lambda * t4x')
     define_script!(
         ctx,
         new_t4y,
@@ -260,7 +259,7 @@ pub fn t4_double_by_tangent_line(
 }
 
 // if bit == 1, add q4, else add q4.neg()
-// the only difference with tangent line is the way to compute the updated t4 point
+// the only difference with tangent line is the way to compute the new t4 point
 // for tangent line: x3 = \lambda^2 - 2 \cdot t4x
 //                   y3 = - (v + \lambda * x3)
 // for chord line:   x3 = \lambda^2 - t4x - q4x
@@ -326,7 +325,7 @@ pub fn t4_add_by_chord_line(
     // t4x' = \lambda^2 - 2 \cdot t4x
     define_script!(ctx, new_t4x, Fq2, [t4x, q4x, lambda], add_chord_line_x());
 
-    // t4y' = - (v + \lambda * t4x') and update t4
+    // t4y' = - (v + \lambda * t4x')
     define_script!(ctx, new_t4y, Fq2, [q4x, lambda, v], add_chord_line_y());
 
     // evaluate the point by the line (divisor)
@@ -389,261 +388,6 @@ pub fn frob_point_mul_by_2char_neg<'a>(
     (new_x, q4y)
 }
 
-pub fn fq2_conjugate() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        assert_eq!(inputs.len(), 1);
-        let mut fq2 = inputs[0].get_fq2();
-        fq2.conjugate_in_place();
-        State::Fq2(Some(fq2))
-    };
-    (Box::new(func), placeholder_script_fn())
-}
-
-// inputs
-fn add_chord_line_x() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        assert_eq!(inputs.len(), 3);
-        let t4x = inputs[0].get_fq2();
-        let q4x = inputs[1].get_fq2();
-        let lambda = inputs[2].get_fq2();
-
-        // t4x' = \lambda^2 - 2 \cdot t4x
-        let t4x_new = lambda.square() - t4x - q4x;
-        State::Fq2(Some(t4x_new))
-    };
-
-    (Box::new(func), placeholder_script_fn())
-}
-
-// the same with `double_tangent_line_y`
-fn add_chord_line_y() -> (ComputeFn, ScriptFn) { double_tangent_line_y() }
-
-// inputs t4x, lambda, v
-fn double_tangent_line_y() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        assert_eq!(inputs.len(), 3);
-        let t4x_new = inputs[0].get_fq2();
-        let lambda = inputs[1].get_fq2();
-        let v = inputs[2].get_fq2();
-
-        // t4y' = - (v + \lambda * t4x')
-        let t4y_new = -(v + lambda * t4x_new);
-
-        State::Fq2(Some(t4y_new))
-    };
-
-    (Box::new(func), placeholder_script_fn())
-}
-
-// inputs: t4x, lambda
-fn double_tangent_line_x() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        assert_eq!(inputs.len(), 2);
-        let t4x = inputs[0].get_fq2();
-        let lambda = inputs[1].get_fq2();
-
-        // t4x' = \lambda^2 - 2 \cdot t4x
-        let t4x_new = lambda.square() - Fq2::from(2) * t4x;
-        State::Fq2(Some(t4x_new))
-    };
-
-    (Box::new(func), placeholder_script_fn())
-}
-
-// inputs: t4x, t4y, lambda, v
-fn check_line_through_point() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        assert_eq!(inputs.len(), 4);
-        let t4x = inputs[0].get_fq2();
-        let t4y = inputs[1].get_fq2();
-        let lambda = inputs[2].get_fq2();
-        let v = inputs[3].get_fq2();
-
-        // check if t4y = t4x * lambda + v
-        State::CheckValid(Some(t4y == t4x * lambda + v))
-    };
-    (Box::new(func), placeholder_script_fn())
-}
-
-fn check_slope_of_tangent_line() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        assert_eq!(inputs.len(), 3);
-        let t4x = inputs[0].get_fq2();
-        let t4y = inputs[1].get_fq2();
-        let lambda = inputs[2].get_fq2();
-
-        // check if 3 * t4x^2 * lambda = 2 * y^2
-        State::CheckValid(Some(
-            Fq2::from(3) * t4x.square() * lambda == Fq2::from(2) * t4y.square(),
-        ))
-    };
-    (Box::new(func), placeholder_script_fn())
-}
-
-fn nonconstant_line_evaluate_c0() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        assert_eq!(inputs.len(), 2);
-        let lambda = inputs[0].get_fq2();
-        let p4 = inputs[1].get_g1();
-
-        let mut c0 = lambda;
-        c0.mul_assign_by_basefield(&p4.x().unwrap());
-
-        // update c0 of ctx.evaluate_p4
-        compute_ctx.evaluate_p4 = Some(Fq6::new(c0, Fq2::from(0), Fq2::from(0)));
-
-        // evaluate the point by the line (divisor)
-        State::Fq2(Some(c0))
-    };
-    (Box::new(func), placeholder_script_fn())
-}
-
-fn nonconstant_line_evaluate_c1() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        assert_eq!(inputs.len(), 2);
-        let v = inputs[0].get_fq2();
-        let p4 = inputs[1].get_g1();
-
-        let mut c1 = v.neg();
-        c1.mul_assign_by_basefield(&p4.y().unwrap());
-
-        // update c1 of ctx.evaluate_p4
-        compute_ctx.evaluate_p4 = Some(Fq6::new(
-            compute_ctx.evaluate_p4.unwrap().c0,
-            c1,
-            Fq2::from(0),
-        ));
-
-        // evaluate the point by the line (divisor)
-        State::Fq2(Some(c1))
-    };
-    (Box::new(func), placeholder_script_fn())
-}
-
-// outputs [lambda, v]
-fn constant_line_compute(
-    compute_ctx: &ComputeCtx,
-    args: eval_args::Args,
-    selector: Selector,
-) -> (Fq2, Fq2, G2Affine) {
-    // select t_point
-    let (t_point, q_point) = match args.t3_or_t2 {
-        T3OrT2::T3 => (
-            compute_ctx
-                .tpoints
-                .get(&TPointSelector::T3(selector))
-                .unwrap()
-                .clone(),
-            compute_ctx.q3,
-        ),
-        T3OrT2::T2 => (
-            compute_ctx
-                .tpoints
-                .get(&TPointSelector::T2(selector))
-                .unwrap()
-                .clone(),
-            compute_ctx.q2,
-        ),
-    };
-
-    let (lambda, new_t_point) = match args.mode {
-        eval_args::Mode::Double => {
-            // select is_double
-            (
-                (t_point.x.square() + t_point.x.square() + t_point.x.square())
-                    / (t_point.y + t_point.y),
-                t_point + t_point,
-            )
-        }
-        eval_args::Mode::Add(is_neg_bit) => {
-            // select is_double
-            let q_point = match is_neg_bit {
-                eval_args::IsNegBit::Neg => q_point.neg(),
-                eval_args::IsNegBit::Pos => q_point,
-            };
-            (
-                (t_point.y - q_point.y) / (t_point.x - q_point.x),
-                t_point + q_point,
-            )
-        }
-        eval_args::Mode::Frob(mul_type) => {
-            // select is_double
-            let q_point = match mul_type {
-                eval_args::MulType::Char => mul_by_char(q_point),
-                eval_args::MulType::Char2Neg => mul_by_2char_neg(q_point),
-            };
-            (
-                (t_point.y - q_point.y) / (t_point.x - q_point.x),
-                t_point + q_point,
-            )
-        }
-    };
-
-    let v = t_point.y - lambda * t_point.x;
-
-    (lambda, v, new_t_point.into_affine())
-}
-
-pub mod eval_args {
-    #[derive(Debug, Clone)]
-    pub struct Args {
-        pub t3_or_t2: T3OrT2,
-        pub mode: Mode,
-    }
-    #[derive(Debug, Clone)]
-    pub enum T3OrT2 {
-        T3,
-        T2,
-    }
-    #[derive(Debug, Clone)]
-    pub enum Mode {
-        Double,
-        Add(IsNegBit),
-        Frob(MulType),
-    }
-    #[derive(Debug, Clone)]
-    pub enum IsNegBit {
-        Neg,
-        Pos,
-    }
-    #[derive(Debug, Clone)]
-    pub enum MulType {
-        Char,
-        Char2Neg,
-    }
-}
-
-pub fn constant_line_eval_c0(selector: TPointSelector, is_neg: bool) -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        assert_eq!(inputs.len(), 1);
-        let p_point = inputs[0].get_g1();
-
-        let (lambda, _) = add_line(compute_ctx, selector.clone(), is_neg);
-
-        let mut c0 = lambda;
-        c0.mul_assign_by_basefield(&p_point.x().unwrap());
-
-        // evaluate the point by the line (divisor)
-        State::Fq2(Some(c0))
-    };
-    (Box::new(func), placeholder_script_fn())
-}
-pub fn constant_line_eval_c1(selector: TPointSelector, is_neg: bool) -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        assert_eq!(inputs.len(), 1);
-        let p_point = inputs[0].get_g1();
-
-        let (lambda, v) = add_line(compute_ctx, selector.clone(), is_neg);
-
-        let mut c1 = v.neg();
-        c1.mul_assign_by_basefield(&p_point.y().unwrap());
-
-        // evaluate the point by the line (divisor)
-        State::Fq2(Some(c1))
-    };
-    (Box::new(func), placeholder_script_fn())
-}
-
 // outputs: t3_c0, t3_c1, t2_c0, t2_c1
 pub fn evaluate_t2_and_t3(
     ctx: &mut GraphContext,
@@ -698,6 +442,7 @@ pub fn line_evaluate_multiplication(
     t3_c1: &BitVMNode,
     t2_c0: &BitVMNode,
     t2_c1: &BitVMNode,
+    selector: &Selector,
 ) -> (BitVMNode, BitVMNode, BitVMNode) {
     // step 1:
     // [1 + (t4_c0, t4_c1, 0) J] * [1 + (t3_c0, t3_c1, 0) J] ->
@@ -773,9 +518,9 @@ pub fn line_evaluate_multiplication(
     // 1 + (dk0, dk1, dk2) * 1 / (mh0, mh1, mh2) J ->
     // 1 + (g0, g1, g2) J, and check (g0, g1, g2) * (mh0, mh1, mh2) == (dk0, dk1, dk2)
     //
-    define_input!(ctx, g0, Fq2, extract_line_evaluation_g(0));
-    define_input!(ctx, g1, Fq2, extract_line_evaluation_g(1));
-    define_input!(ctx, g2, Fq2, extract_line_evaluation_g(2));
+    define_input!(ctx, g0, Fq2, extract_line_evaluation_g(0, selector.clone()));
+    define_input!(ctx, g1, Fq2, extract_line_evaluation_g(1, selector.clone()));
+    define_input!(ctx, g2, Fq2, extract_line_evaluation_g(2, selector.clone()));
     //
     // check if (g0, g1, g2) * (mh0, mh1, mh2) == (dk0, dk1, dk2)
     let [x0, x1, x2] = new_mul_fq6(ctx, [&g0, &g1, &g2], [&mh0, &mh1, &mh2]);
@@ -828,49 +573,6 @@ pub fn fq6_frobinus_map(
     [frob_c0, c1_tweak, c2_tweak]
 }
 
-pub fn fq2_frobinus_map(power: usize) -> (ComputeFn, ScriptFn) {
-    assert!(power <= 3 && power >= 1, "power out of range: {}", power);
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        assert_eq!(inputs.len(), 1);
-        let x = inputs[0].get_fq2();
-        let y = x.frobenius_map(power);
-        State::Fq2(Some(y))
-    };
-    (Box::new(func), placeholder_script_fn())
-}
-
-const BETA32: Fq2 = Fq2::new(
-    MontFp!("3772000881919853776433695186713858239009073593817195771773381919316419345261"),
-    MontFp!("2236595495967245188281701248203181795121068902605861227855261137820944008926"),
-);
-const BETA33: Fq2 = Fq2::new(
-    MontFp!("19066677689644738377698246183563772429336693972053703295610958340458742082029"),
-    MontFp!("18382399103927718843559375435273026243156067647398564021675359801612095278180"),
-);
-const BETA22: Fq2 = Fq2::new(
-    MontFp!("21888242871839275220042445260109153167277707414472061641714758635765020556616"),
-    MontFp!("0"),
-);
-const BETA12: Fq2 = ark_bn254::Config::TWIST_MUL_BY_Q_X;
-const BETA13: Fq2 = ark_bn254::Config::TWIST_MUL_BY_Q_Y;
-
-// compute q' = (q.x.conjugate()*beta_12, q.y.conjugate() * beta_13)
-pub fn mul_by_char(r: G2Affine) -> G2Affine {
-    let mut s = r;
-    s.x.frobenius_map_in_place(1);
-    s.x *= &BETA12;
-    s.y.frobenius_map_in_place(1);
-    s.y *= &BETA13;
-    s
-}
-
-// compute q'' = (q.x * beta_22, q.y)
-pub fn mul_by_2char_neg(r: G2Affine) -> G2Affine {
-    let mut s = r;
-    s.x *= &BETA22;
-    s
-}
-
 #[cfg(test)]
 mod tests {
     use crate::autochunker::computation_graph::{
@@ -878,10 +580,11 @@ mod tests {
     };
     use crate::autochunker::compute_ctx::ComputeCtx;
     use crate::autochunker::functions::{
-        fq12_frobinus_map, mul_by_2char_neg, mul_by_char, new_mul_fq12, new_mul_fq12_with_hint,
-        new_mul_fq6, new_square_fq6, t4_double_by_tangent_line,
+        fq12_frobinus_map, mul_by_2char_neg, new_mul_fq12, new_mul_fq12_with_hint, new_mul_fq6,
+        new_square_fq6, t4_double_by_tangent_line,
     };
     use crate::autochunker::intermediate_state::State;
+    use crate::autochunker::primitve_functions::mul_by_char;
     use crate::autochunker::proof::RawProof;
     use crate::{define_input, define_overide_script, define_script};
     use ark_bn254::G2Affine;

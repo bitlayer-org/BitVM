@@ -6,9 +6,10 @@ use crate::groth16::constants::LAMBDA;
 use crate::groth16::offchain_checker::compute_c_wi;
 use ark_bn254::Fq6Config;
 use ark_bn254::{Fq, Fq12, Fq2, Fq6, Fr, G1Affine, G1Projective, G2Affine};
+use ark_ec::bn::BnConfig;
 use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::Fp6Config;
 use ark_ff::{AdditiveGroup, Field, One, PrimeField};
+use ark_ff::{Fp6Config, MontFp};
 use bitcoin_script::{script, Script};
 use core::ops::Neg;
 use log::{debug, error, info, warn};
@@ -311,17 +312,206 @@ pub fn fq2_square() -> (ComputeFn, ScriptFn) {
     )
 }
 
+pub fn fq2_conjugate() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 1);
+        let mut fq2 = inputs[0].get_fq2();
+        fq2.conjugate_in_place();
+        State::Fq2(Some(fq2))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+
+pub fn fq2_frobinus_map(power: usize) -> (ComputeFn, ScriptFn) {
+    assert!(power <= 3 && power >= 1, "power out of range: {}", power);
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 1);
+        let x = inputs[0].get_fq2();
+        let y = x.frobenius_map(power);
+        State::Fq2(Some(y))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+
+pub const BETA32: Fq2 = Fq2::new(
+    MontFp!("3772000881919853776433695186713858239009073593817195771773381919316419345261"),
+    MontFp!("2236595495967245188281701248203181795121068902605861227855261137820944008926"),
+);
+pub const BETA33: Fq2 = Fq2::new(
+    MontFp!("19066677689644738377698246183563772429336693972053703295610958340458742082029"),
+    MontFp!("18382399103927718843559375435273026243156067647398564021675359801612095278180"),
+);
+pub const BETA22: Fq2 = Fq2::new(
+    MontFp!("21888242871839275220042445260109153167277707414472061641714758635765020556616"),
+    MontFp!("0"),
+);
+pub const BETA12: Fq2 = ark_bn254::Config::TWIST_MUL_BY_Q_X;
+pub const BETA13: Fq2 = ark_bn254::Config::TWIST_MUL_BY_Q_Y;
+
+// compute q' = (q.x.conjugate()*beta_12, q.y.conjugate() * beta_13)
+pub fn mul_by_char(r: G2Affine) -> G2Affine {
+    let mut s = r;
+    s.x.frobenius_map_in_place(1);
+    s.x *= &BETA12;
+    s.y.frobenius_map_in_place(1);
+    s.y *= &BETA13;
+    s
+}
+
+// compute q'' = (q.x * beta_22, q.y)
+pub fn mul_by_2char_neg(r: G2Affine) -> G2Affine {
+    let mut s = r;
+    s.x *= &BETA22;
+    s
+}
+
+// inputs
+pub fn add_chord_line_x() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 3);
+        let t4x = inputs[0].get_fq2();
+        let q4x = inputs[1].get_fq2();
+        let lambda = inputs[2].get_fq2();
+
+        // t4x' = \lambda^2 - 2 \cdot t4x
+        let t4x_new = lambda.square() - t4x - q4x;
+        State::Fq2(Some(t4x_new))
+    };
+
+    (Box::new(func), placeholder_script_fn())
+}
+
+// the same with `double_tangent_line_y`
+pub fn add_chord_line_y() -> (ComputeFn, ScriptFn) { double_tangent_line_y() }
+
+// inputs t4x, lambda, v
+pub fn double_tangent_line_y() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 3);
+        let t4x_new = inputs[0].get_fq2();
+        let lambda = inputs[1].get_fq2();
+        let v = inputs[2].get_fq2();
+
+        // t4y' = - (v + \lambda * t4x')
+        let t4y_new = -(v + lambda * t4x_new);
+
+        State::Fq2(Some(t4y_new))
+    };
+
+    (Box::new(func), placeholder_script_fn())
+}
+
+// inputs: t4x, lambda
+pub fn double_tangent_line_x() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 2);
+        let t4x = inputs[0].get_fq2();
+        let lambda = inputs[1].get_fq2();
+
+        // t4x' = \lambda^2 - 2 \cdot t4x
+        let t4x_new = lambda.square() - Fq2::from(2) * t4x;
+        State::Fq2(Some(t4x_new))
+    };
+
+    (Box::new(func), placeholder_script_fn())
+}
+
+// inputs: t4x, t4y, lambda, v
+pub fn check_line_through_point() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 4);
+        let t4x = inputs[0].get_fq2();
+        let t4y = inputs[1].get_fq2();
+        let lambda = inputs[2].get_fq2();
+        let v = inputs[3].get_fq2();
+
+        // check if t4y = t4x * lambda + v
+        State::CheckValid(Some(t4y == t4x * lambda + v))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+
+pub fn check_slope_of_tangent_line() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 3);
+        let t4x = inputs[0].get_fq2();
+        let t4y = inputs[1].get_fq2();
+        let lambda = inputs[2].get_fq2();
+
+        // check if 3 * t4x^2 * lambda = 2 * y^2
+        State::CheckValid(Some(
+            Fq2::from(3) * t4x.square() * lambda == Fq2::from(2) * t4y.square(),
+        ))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+
+pub fn nonconstant_line_evaluate_c0() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 2);
+        let lambda = inputs[0].get_fq2();
+        let p4 = inputs[1].get_g1();
+
+        let mut c0 = lambda;
+        c0.mul_assign_by_basefield(&p4.x().unwrap());
+
+        // evaluate the point by the line (divisor)
+        State::Fq2(Some(c0))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+
+pub fn nonconstant_line_evaluate_c1() -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 2);
+        let v = inputs[0].get_fq2();
+        let p4 = inputs[1].get_g1();
+
+        let mut c1 = v.neg();
+        c1.mul_assign_by_basefield(&p4.y().unwrap());
+
+        // evaluate the point by the line (divisor)
+        State::Fq2(Some(c1))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+
+pub fn constant_line_eval_c0(selector: TPointSelector, is_neg: bool) -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 1);
+        let p_point = inputs[0].get_g1();
+
+        let (lambda, _) = add_line(compute_ctx, selector.clone(), is_neg);
+
+        let mut c0 = lambda;
+        c0.mul_assign_by_basefield(&p_point.x().unwrap());
+
+        // evaluate the point by the line (divisor)
+        State::Fq2(Some(c0))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+pub fn constant_line_eval_c1(selector: TPointSelector, is_neg: bool) -> (ComputeFn, ScriptFn) {
+    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+        assert_eq!(inputs.len(), 1);
+        let p_point = inputs[0].get_g1();
+
+        let (lambda, v) = add_line(compute_ctx, selector.clone(), is_neg);
+
+        let mut c1 = v.neg();
+        c1.mul_assign_by_basefield(&p_point.y().unwrap());
+
+        // evaluate the point by the line (divisor)
+        State::Fq2(Some(c1))
+    };
+    (Box::new(func), placeholder_script_fn())
+}
+
 mod tests {
     use crate::autochunker::{primitve_functions::ComputeCtx, proof::RawProof};
     use ark_bn254::{Fq, Fq2, Fq6};
     use core::ops::Neg;
     use log::info;
-
-    #[test_log::test]
-    fn test_raw_proof_to_compute_ctx() {
-        let raw_proof = RawProof::mock_proof();
-        let _: ComputeCtx = raw_proof.into();
-    }
 
     #[test_log::test]
     fn test_fq6_inverse() {
