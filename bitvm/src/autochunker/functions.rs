@@ -428,11 +428,6 @@ fn double_tangent_line_y() -> (ComputeFn, ScriptFn) {
 
         // t4y' = - (v + \lambda * t4x')
         let t4y_new = -(v + lambda * t4x_new);
-        compute_ctx.t4 = G2Affine {
-            x: t4x_new,
-            y: t4y_new,
-            infinity: false,
-        };
 
         State::Fq2(Some(t4y_new))
     };
@@ -618,13 +613,12 @@ pub mod eval_args {
     }
 }
 
-pub fn constant_line_eval_c0(args: &eval_args::Args, selector: Selector) -> (ComputeFn, ScriptFn) {
-    let args = args.clone();
+pub fn constant_line_eval_c0(selector: TPointSelector, is_neg: bool) -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let p_point = inputs[0].get_g1();
 
-        let (lambda, _, _) = constant_line_compute(compute_ctx, args.clone(), selector.clone());
+        let (lambda, _) = add_line(compute_ctx, selector.clone(), is_neg);
 
         let mut c0 = lambda;
         c0.mul_assign_by_basefield(&p_point.x().unwrap());
@@ -634,29 +628,15 @@ pub fn constant_line_eval_c0(args: &eval_args::Args, selector: Selector) -> (Com
     };
     (Box::new(func), placeholder_script_fn())
 }
-pub fn constant_line_eval_c1(args: &eval_args::Args, selector: Selector) -> (ComputeFn, ScriptFn) {
-    let args = args.clone();
+pub fn constant_line_eval_c1(selector: TPointSelector, is_neg: bool) -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let p_point = inputs[0].get_g1();
 
-        let (lambda, v, new_t_point) =
-            constant_line_compute(compute_ctx, args.clone(), selector.clone());
+        let (lambda, v) = add_line(compute_ctx, selector.clone(), is_neg);
 
-        let mut c0 = lambda;
-        c0.mul_assign_by_basefield(&p_point.x().unwrap());
         let mut c1 = v.neg();
         c1.mul_assign_by_basefield(&p_point.y().unwrap());
-
-        // update t point and point evaluate
-        match args.t3_or_t2 {
-            eval_args::T3OrT2::T3 => {
-                compute_ctx.evaluate_p3 = Some(Fq6::new(c0, c1, Fq2::from(0)));
-            }
-            eval_args::T3OrT2::T2 => {
-                compute_ctx.evaluate_p2 = Some(Fq6::new(c0, c1, Fq2::from(0)));
-            }
-        }
 
         // evaluate the point by the line (divisor)
         State::Fq2(Some(c1))
@@ -669,32 +649,23 @@ pub fn evaluate_t2_and_t3(
     ctx: &mut GraphContext,
     p3_tweak: &BitVMNode,
     p2_tweak: &BitVMNode,
-    mode: eval_args::Mode,
     selector: Selector,
+    is_neg: bool,
 ) -> (BitVMNode, BitVMNode, BitVMNode, BitVMNode) {
-    let t2_args = eval_args::Args {
-        t3_or_t2: eval_args::T3OrT2::T2,
-        mode: mode.clone(),
-    };
-    let t3_args = eval_args::Args {
-        t3_or_t2: eval_args::T3OrT2::T3,
-        mode: mode,
-    };
-
     // update t3 by chord line
     define_script!(
         ctx,
         t3_c0,
         Fq2,
         [p3_tweak],
-        constant_line_eval_c0(&t3_args, selector.clone())
+        constant_line_eval_c0(TPointSelector::T3(selector.clone()), is_neg)
     );
     define_script!(
         ctx,
         t3_c1,
         Fq2,
         [p3_tweak],
-        constant_line_eval_c1(&t3_args, selector.clone())
+        constant_line_eval_c1(TPointSelector::T3(selector.clone()), is_neg)
     );
 
     // update t2 by chord line
@@ -703,14 +674,14 @@ pub fn evaluate_t2_and_t3(
         t2_c0,
         Fq2,
         [p2_tweak],
-        constant_line_eval_c0(&t2_args, selector.clone())
+        constant_line_eval_c0(TPointSelector::T4(selector.clone()), is_neg)
     );
     define_script!(
         ctx,
         t2_c1,
         Fq2,
         [p2_tweak],
-        constant_line_eval_c1(&t2_args, selector.clone())
+        constant_line_eval_c1(TPointSelector::T4(selector.clone()), is_neg)
     );
 
     (t3_c0, t3_c1, t2_c0, t2_c1)

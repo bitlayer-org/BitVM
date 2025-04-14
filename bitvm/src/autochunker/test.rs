@@ -113,9 +113,7 @@ fn main_test() {
     define_script!(ctx, c_inv2, Fq2, [c2], neg_fq2());
 
     // define t4x and t4y
-    define_input!(ctx, t4x, Fq2, extract_t4x());
-    define_input!(ctx, t4y, Fq2, extract_t4y());
-    let (mut t4x, mut t4y) = (t4x, t4y);
+    let (mut t4x, mut t4y) = (q4x.clone(), q4y.clone());
 
     // =========================================================================================================
     //
@@ -152,8 +150,8 @@ fn main_test() {
                 &mut ctx.inner_context("double_t2_t3"),
                 &p3_tweak,
                 &p2_tweak,
-                eval_args::Mode::Double,
-                &Selector::Loop(i, LoopSelector::DoublePoint),
+                Selector::Loop(i, LoopSelector::DoublePoint),
+                false,
             );
 
             // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
@@ -216,12 +214,8 @@ fn main_test() {
                 &mut ctx.inner_context("add_t2_t3"),
                 &p3_tweak,
                 &p2_tweak,
-                eval_args::Mode::Add(if bit == 1 {
-                    eval_args::IsNegBit::Pos
-                } else {
-                    eval_args::IsNegBit::Neg
-                }),
-                &Selector::Loop(i, LoopSelector::AddPoint),
+                Selector::Loop(i, LoopSelector::AddPoint),
+                if bit == 1 { false } else { true },
             );
 
             // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
@@ -311,7 +305,8 @@ fn main_test() {
             &mut ctx.inner_context("frob_t2_t3"),
             &p3_tweak,
             &p2_tweak,
-            eval_args::Mode::Frob(eval_args::MulType::Char),
+            Selector::FrobPoint(1),
+            false,
         );
 
         // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
@@ -351,7 +346,8 @@ fn main_test() {
             &mut ctx.inner_context("frob2_t2_t3"),
             &p3_tweak,
             &p2_tweak,
-            eval_args::Mode::Frob(eval_args::MulType::Char2Neg),
+            Selector::FrobPoint(2),
+            false,
         );
 
         // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)

@@ -423,20 +423,6 @@ pub fn extract_c(idx: usize) -> ComputeFn {
     Box::new(func)
 }
 
-pub fn extract_t4x() -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        State::Fq2(Some(compute_ctx.t4.x().unwrap()))
-    };
-    Box::new(func)
-}
-
-pub fn extract_t4y() -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
-        State::Fq2(Some(compute_ctx.t4.y().unwrap()))
-    };
-    Box::new(func)
-}
-
 pub fn extract_line_evaluation_g(index: usize) -> ComputeFn {
     assert!(index < 3);
     Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
