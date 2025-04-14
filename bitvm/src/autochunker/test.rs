@@ -132,7 +132,11 @@ fn main_test() {
 
             // square f
             // TODO: square fq12
-            [f0, f1, f2] = new_square_fq6(&mut ctx.inner_context("square_f"), [&f0, &f1, &f2]);
+            [f0, f1, f2] = new_square_fq12(
+                &mut ctx.inner_context("square_f"),
+                [&f0, &f1, &f2],
+                &Selector::Loop(i, LoopSelector::SquareF),
+            );
 
             // evaluate t4 by tagent line
             let res = t4_double_by_tangent_line(

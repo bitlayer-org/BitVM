@@ -9,6 +9,38 @@ use bitcoin::pow;
 use serde::de;
 use std::ops::Neg;
 
+pub fn new_square_fq12(
+    ctx: &mut GraphContext,
+    inputs: [&BitVMNode; 3],
+    selector: &Selector,
+) -> [BitVMNode; 3] {
+    let (a0, a1, a2) = (inputs[0], inputs[1], inputs[2]);
+    define_input!(ctx, c0, Fq2, extract_eval_multi_f(0, selector.clone()));
+    define_input!(ctx, c1, Fq2, extract_eval_multi_f(1, selector.clone()));
+    define_input!(ctx, c2, Fq2, extract_eval_multi_f(2, selector.clone()));
+
+    // (v0, v1, v2) = (a0, a1, a2)^2
+    let [v0, v1, v2] = new_square_fq6(ctx, [a0, a1, a2]);
+
+    // (r0, r1, r2) = (v0, v1, v2) * \beta + 1 = (a0, a1, a2)^2 * \beta + 1
+    define_script!(ctx, v2_tweak, Fq2, [v2], fq2_mul_nonresidue());
+    define_script!(ctx, r0, Fq2, [v2_tweak], fq2_plus_one());
+    let (r1, r2) = (v0, v1);
+
+    // check (c0, c1, c2) * (r0, r1, r2) = 2 * (a0, a1, a2)
+    define_script!(ctx, d_a0, Fq2, [a0], fq2_mul_by_integer(2)); // [d]ouble_a0
+    define_script!(ctx, d_a1, Fq2, [a1], fq2_mul_by_integer(2)); // [d]ouble_a1
+    define_script!(ctx, d_a2, Fq2, [a2], fq2_mul_by_integer(2)); // [d]ouble_a2
+    let [cr0, cr1, cr2] = new_mul_fq6(ctx, [&c0, &c1, &c2], [&r0, &r1, &r2]);
+
+    // check (cr0, cr1, cr2) == (double_a0, double_a1, double_a2)
+    define_script!(ctx, _check0, CheckValid, [cr0, d_a0], check_fq2_equal());
+    define_script!(ctx, _check1, CheckValid, [cr1, d_a1], check_fq2_equal());
+    define_script!(ctx, _check2, CheckValid, [cr2, d_a2], check_fq2_equal());
+
+    [c0, c1, c2]
+}
+
 pub fn new_mul_fq12(
     ctx: &mut GraphContext,
     a: [&BitVMNode; 3],
