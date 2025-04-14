@@ -19,7 +19,7 @@ macro_rules! define_input {
     ($context:ident, $name:tt, $state_type:ident, $func:expr) => {
         paste::paste! {
             let state = State::[<new_ $state_type:lower>]();
-            let var_name = $context.variable_prefix.clone() + "_" + &stringify!($name).to_owned();
+            let var_name = $context.new_var(stringify!($name));
             let $name = new_input(&mut $context.graph, var_name, state, $func);
         }
     };
@@ -31,7 +31,7 @@ macro_rules! define_script {
     ($context: ident, $name: ident, $state_type:ident, [$($input:ident),*], $func:expr) => {
         let function = $func.0;
         let script_size = $func.1;
-        let var_name = $context.variable_prefix.clone() + "_" + &stringify!($name).to_owned();
+        let var_name = $context.new_var(stringify!($name));
         let mut inputs = vec![];
         $(inputs.push($input.clone());)*
         paste::paste!{
@@ -53,7 +53,7 @@ macro_rules! define_overide_script {
     // name has been defined and override
     ($context: ident, $name: ident, $state_type:ident, [$($input:ident),*], $func:expr) => {
         let (function, script_size) = $func;
-        let var_name = $context.variable_prefix.clone() + "_" + &stringify!($name).to_owned();
+        let var_name = $context.new_var(stringify!($name));
         let mut inputs = vec![];
         $(inputs.push($input.clone());)*
         paste::paste!{
