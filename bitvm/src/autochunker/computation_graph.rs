@@ -1,6 +1,7 @@
 use super::primitve_functions::placeholder_script_fn;
 use crate::autochunker::compute_ctx::ComputeFn;
 use crate::autochunker::intermediate_state::State;
+use bitcoin::hashes::hash160::Hash;
 use core::borrow;
 use graphrs::readwrite;
 use graphrs::{Edge, Graph, Node};
@@ -173,6 +174,7 @@ pub fn new_script<'a>(
 pub struct GraphContext {
     pub graph: BitVMGraph,
     pub variable_prefix: String,
+    pub node_name_set: Arc<Mutex<HashSet<String>>>,
 }
 
 impl GraphContext {
@@ -181,6 +183,7 @@ impl GraphContext {
         GraphContext {
             graph: Arc::new(Mutex::new(graph)),
             variable_prefix: variable_prefix.to_string(),
+            node_name_set: Arc::new(HashSet::new().into()),
         }
     }
 
@@ -188,6 +191,7 @@ impl GraphContext {
         GraphContext {
             graph: self.graph.clone(),
             variable_prefix: format!("{}_{}", self.variable_prefix.clone(), prefix),
+            node_name_set: self.node_name_set.clone(),
         }
     }
 
@@ -195,9 +199,22 @@ impl GraphContext {
         let graph = self.graph.lock().unwrap();
         readwrite::graphml::write_graphml_file(&graph, path)
     }
+
+    pub fn new_var(&mut self, name: &str) -> String {
+        let new_var_name = format!("{}_{}", self.variable_prefix.clone(), name);
+        if self.node_name_set.lock().unwrap().contains(&new_var_name) {
+            panic!("variable {} already exists", new_var_name);
+        }
+        self.node_name_set
+            .lock()
+            .unwrap()
+            .insert(new_var_name.clone());
+        new_var_name
+    }
 }
 
-pub fn compute_states(graph_ctx: &GraphContext, ctx: &mut ComputeCtx) {
+// return all states that have been computed
+pub fn compute_states(graph_ctx: &GraphContext, ctx: &mut ComputeCtx) -> usize {
     let inputs: Vec<String> = {
         let graph = graph_ctx.graph.lock().unwrap();
 
@@ -309,4 +326,5 @@ pub fn compute_states(graph_ctx: &GraphContext, ctx: &mut ComputeCtx) {
         set_y_count,
         graph.number_of_nodes(),
     );
+    set_y_count
 }

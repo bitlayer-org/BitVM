@@ -14,13 +14,24 @@ pub fn new_square_fq12(
     inputs: [&BitVMNode; 3],
     selector: &Selector,
 ) -> [BitVMNode; 3] {
-    let (a0, a1, a2) = (inputs[0], inputs[1], inputs[2]);
     define_input!(ctx, c0, Fq2, extract_eval_multi_f(0, selector.clone()));
     define_input!(ctx, c1, Fq2, extract_eval_multi_f(1, selector.clone()));
     define_input!(ctx, c2, Fq2, extract_eval_multi_f(2, selector.clone()));
 
+    new_square_fq12_with_hint(ctx, inputs, [&c0, &c1, &c2]);
+    [c0, c1, c2]
+}
+
+pub fn new_square_fq12_with_hint(
+    ctx: &mut GraphContext,
+    inputs: [&BitVMNode; 3],
+    c: [&BitVMNode; 3],
+) {
+    let [c0, c1, c2] = c;
+    let [a0, a1, a2] = inputs;
+
     // (v0, v1, v2) = (a0, a1, a2)^2
-    let [v0, v1, v2] = new_square_fq6(ctx, [a0, a1, a2]);
+    let [v0, v1, v2] = new_square_fq6(&mut ctx.inner_context("a^2"), [a0, a1, a2]);
 
     // (r0, r1, r2) = (v0, v1, v2) * \beta + 1 = (a0, a1, a2)^2 * \beta + 1
     define_script!(ctx, v2_tweak, Fq2, [v2], fq2_mul_nonresidue());
@@ -31,14 +42,16 @@ pub fn new_square_fq12(
     define_script!(ctx, d_a0, Fq2, [a0], fq2_mul_by_integer(2)); // [d]ouble_a0
     define_script!(ctx, d_a1, Fq2, [a1], fq2_mul_by_integer(2)); // [d]ouble_a1
     define_script!(ctx, d_a2, Fq2, [a2], fq2_mul_by_integer(2)); // [d]ouble_a2
-    let [cr0, cr1, cr2] = new_mul_fq6(ctx, [&c0, &c1, &c2], [&r0, &r1, &r2]);
+    let [cr0, cr1, cr2] = new_mul_fq6(
+        &mut ctx.inner_context("cxr"),
+        [&c0, &c1, &c2],
+        [&r0, &r1, &r2],
+    );
 
     // check (cr0, cr1, cr2) == (double_a0, double_a1, double_a2)
     define_script!(ctx, _check0, CheckValid, [cr0, d_a0], check_fq2_equal());
     define_script!(ctx, _check1, CheckValid, [cr1, d_a1], check_fq2_equal());
     define_script!(ctx, _check2, CheckValid, [cr2, d_a2], check_fq2_equal());
-
-    [c0, c1, c2]
 }
 
 pub fn new_mul_fq12(
@@ -613,7 +626,7 @@ mod tests {
     use crate::autochunker::compute_ctx::ComputeCtx;
     use crate::autochunker::functions::{
         fq12_frobinus_map, mul_by_2char_neg, new_mul_fq12, new_mul_fq12_with_hint, new_mul_fq6,
-        new_square_fq6, t4_double_by_tangent_line,
+        new_square_fq12, new_square_fq12_with_hint, new_square_fq6, t4_double_by_tangent_line,
     };
     use crate::autochunker::intermediate_state::State;
     use crate::autochunker::primitve_functions::mul_by_char;
@@ -623,8 +636,8 @@ mod tests {
     use ark_bn254::{Fq, Fq12, Fq2, Fq6, Fq6Config, G1Affine};
     use ark_ec::bn::BnConfig;
     use ark_ec::AffineRepr;
-    use ark_ff::Fp6Config;
     use ark_ff::{AdditiveGroup, Field};
+    use ark_ff::{Fp6Config, UniformRand};
     use graphrs::Graph;
     use log::{debug, info, warn};
     use std::ffi::CStr;
@@ -685,7 +698,7 @@ mod tests {
             match state {
                 State::CheckValid(Some(x)) => {
                     if !x {
-                        warn!("{} state: {:?}", name, state);
+                        panic!("{} state: {:?}", name, state);
                     }
                 }
                 _ => {
@@ -693,6 +706,16 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn random_fq6() -> Fq6 {
+        let mut rng = ark_std::test_rng();
+        let a = Fq6::new(
+            Fq2::rand(&mut rng),
+            Fq2::rand(&mut rng),
+            Fq2::rand(&mut rng),
+        );
+        a
     }
 
     #[test_log::test]
@@ -798,6 +821,32 @@ mod tests {
         // compute states
         let mut compute_ctx = RawProof::mock_proof().into();
         compute_states(&ctx, &mut compute_ctx);
+
+        // check result
+        show_all_states(&ctx);
+    }
+
+    #[test_log::test]
+    fn test_square_fq12() {
+        let a = random_fq6();
+        let a_fq12 = Fq12::new(Fq6::from(1), a);
+        let a_square = a_fq12.square();
+        let c = a_square.c1 / a_square.c0;
+
+        let mut ctx = GraphContext::new("test");
+        let [a0, a1, a2] = new_fq6(&mut ctx.inner_context("a"), a);
+        let [c0, c1, c2] = new_fq6(&mut ctx.inner_context("c"), c);
+        new_square_fq12_with_hint(
+            &mut ctx.inner_context("sqaure"),
+            [&a0, &a1, &a2],
+            [&c0, &c1, &c2],
+        );
+
+        // compute states
+        let mut compute_ctx = RawProof::mock_proof().into();
+        let states = compute_states(&ctx, &mut compute_ctx);
+
+        assert_eq!(states, ctx.graph.lock().unwrap().number_of_nodes());
 
         // check result
         show_all_states(&ctx);
