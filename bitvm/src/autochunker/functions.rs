@@ -273,7 +273,7 @@ pub fn t4_double_by_tangent_line(
         _check_line_through_point,
         CheckValid,
         [t4x, t4y, lambda, v],
-        check_line_through_point()
+        check_line_through_point(selector.clone())
     );
 
     // 3 \cdot t4x^2 \cdot \lambda = 2 \cdot y^2
@@ -298,8 +298,20 @@ pub fn t4_double_by_tangent_line(
     );
 
     // evaluate the point by the line (divisor)
-    define_script!(ctx, c0, Fq2, [lambda, p4], nonconstant_line_evaluate_c0());
-    define_script!(ctx, c1, Fq2, [v, p4], nonconstant_line_evaluate_c1());
+    define_script!(
+        ctx,
+        c0,
+        Fq2,
+        [lambda, p4],
+        nonconstant_line_evaluate_c0(selector.clone())
+    );
+    define_script!(
+        ctx,
+        c1,
+        Fq2,
+        [v, p4],
+        nonconstant_line_evaluate_c1(selector.clone())
+    );
 
     (new_t4x, new_t4y, c0, c1)
 }
@@ -346,7 +358,7 @@ pub fn t4_add_by_chord_line(
         _check_line_through_point,
         CheckValid,
         [t4x, t4y, lambda, v],
-        check_line_through_point()
+        check_line_through_point(selector.clone())
     );
 
     // q4y =?= q4x \cdot \lambda + v
@@ -356,7 +368,7 @@ pub fn t4_add_by_chord_line(
             _check_line_through_point_q4,
             CheckValid,
             [q4x, q4y, lambda, v],
-            check_line_through_point()
+            check_line_through_point(selector.clone())
         );
     } else {
         define_script!(
@@ -364,19 +376,31 @@ pub fn t4_add_by_chord_line(
             _check_line_through_point_q4,
             CheckValid,
             [q4x, q4y_neg, lambda, v],
-            check_line_through_point()
+            check_line_through_point(selector.clone())
         );
     }
 
-    // t4x' = \lambda^2 - 2 \cdot t4x
+    // t4x' = \lambda^2 -  t4x - q4x
     define_script!(ctx, new_t4x, Fq2, [t4x, q4x, lambda], add_chord_line_x());
 
     // t4y' = - (v + \lambda * t4x')
-    define_script!(ctx, new_t4y, Fq2, [q4x, lambda, v], add_chord_line_y());
+    define_script!(ctx, new_t4y, Fq2, [new_t4x, lambda, v], add_chord_line_y());
 
     // evaluate the point by the line (divisor)
-    define_script!(ctx, c0, Fq2, [lambda, p4], nonconstant_line_evaluate_c0());
-    define_script!(ctx, c1, Fq2, [v, p4], nonconstant_line_evaluate_c1());
+    define_script!(
+        ctx,
+        c0,
+        Fq2,
+        [lambda, p4],
+        nonconstant_line_evaluate_c0(selector.clone())
+    );
+    define_script!(
+        ctx,
+        c1,
+        Fq2,
+        [v, p4],
+        nonconstant_line_evaluate_c1(selector.clone())
+    );
 
     (new_t4x, new_t4y, c0, c1)
 }
@@ -443,7 +467,7 @@ pub fn evaluate_t2_and_t3(
 ) -> (BitVMNode, BitVMNode, BitVMNode, BitVMNode) {
     let (is_neg, is_double) = match selector {
         Selector::Loop(i, LoopSelector::AddPoint) => {
-            let bit = Bn254Config::ATE_LOOP_COUNT[i];
+            let bit = Bn254Config::ATE_LOOP_COUNT[i - 1];
             (if bit == 1 { false } else { true }, false)
         }
         Selector::Loop(_, LoopSelector::DoublePoint) => (false, true),
@@ -473,14 +497,14 @@ pub fn evaluate_t2_and_t3(
         t2_c0,
         Fq2,
         [p2_tweak],
-        constant_line_eval_c0(TPointSelector::T4(selector.clone()), is_neg, is_double)
+        constant_line_eval_c0(TPointSelector::T2(selector.clone()), is_neg, is_double)
     );
     define_script!(
         ctx,
         t2_c1,
         Fq2,
         [p2_tweak],
-        constant_line_eval_c1(TPointSelector::T4(selector.clone()), is_neg, is_double)
+        constant_line_eval_c1(TPointSelector::T2(selector.clone()), is_neg, is_double)
     );
 
     (t3_c0, t3_c1, t2_c0, t2_c1)

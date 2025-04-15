@@ -226,7 +226,7 @@ pub fn compute_states(graph_ctx: &GraphContext, ctx: &mut ComputeCtx) -> usize {
             .collect()
     };
 
-    info!("inputs: {:?}", inputs);
+    debug!("inputs: {:?}", inputs);
 
     let mut queue_x: VecDeque<String> = VecDeque::from(inputs.clone());
     let mut set_x: HashSet<String> = HashSet::from_iter(inputs.into_iter());

@@ -131,7 +131,7 @@ pub fn tweak_point() -> (ComputeFn, ScriptFn) {
             y: point.y.inverse().unwrap(),
             infinity: false,
         };
-        State::G1(Some(compute_ctx.p2.clone()))
+        State::G1(Some(tweak_point))
     };
     (Box::new(func), placeholder_script_fn())
 }
@@ -417,13 +417,18 @@ pub fn double_tangent_line_x() -> (ComputeFn, ScriptFn) {
 }
 
 // inputs: t4x, t4y, lambda, v
-pub fn check_line_through_point() -> (ComputeFn, ScriptFn) {
+pub fn check_line_through_point(selector: Selector) -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 4);
         let t4x = inputs[0].get_fq2();
         let t4y = inputs[1].get_fq2();
         let lambda = inputs[2].get_fq2();
         let v = inputs[3].get_fq2();
+
+        debug!(
+            "check_line_through_point selector: {:?}: t4x: {:?}, t4y: {:?}, lambda: {:?}, v: {:?}",
+            selector, t4x, t4y, lambda, v
+        );
 
         // check if t4y = t4x * lambda + v
         State::CheckValid(Some(t4y == t4x * lambda + v))
@@ -438,7 +443,7 @@ pub fn check_slope_of_tangent_line() -> (ComputeFn, ScriptFn) {
         let t4y = inputs[1].get_fq2();
         let lambda = inputs[2].get_fq2();
 
-        // check if 3 * t4x^2 * lambda = 2 * y
+        // check if 3 * t4x^2 = 2 * y * lambda
         State::CheckValid(Some(
             Fq2::from(3) * t4x.square() == Fq2::from(2) * t4y * lambda,
         ))
@@ -446,7 +451,7 @@ pub fn check_slope_of_tangent_line() -> (ComputeFn, ScriptFn) {
     (Box::new(func), placeholder_script_fn())
 }
 
-pub fn nonconstant_line_evaluate_c0() -> (ComputeFn, ScriptFn) {
+pub fn nonconstant_line_evaluate_c0(selector: Selector) -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 2);
         let lambda = inputs[0].get_fq2();
@@ -455,13 +460,20 @@ pub fn nonconstant_line_evaluate_c0() -> (ComputeFn, ScriptFn) {
         let mut c0 = lambda;
         c0.mul_assign_by_basefield(&p4.x().unwrap());
 
+        debug!(
+            "lambda: {:?}, p_point.x {:?} for selector {:?}",
+            lambda,
+            p4.x().unwrap(),
+            selector
+        );
+
         // evaluate the point by the line (divisor)
         State::Fq2(Some(c0))
     };
     (Box::new(func), placeholder_script_fn())
 }
 
-pub fn nonconstant_line_evaluate_c1() -> (ComputeFn, ScriptFn) {
+pub fn nonconstant_line_evaluate_c1(selector: Selector) -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 2);
         let v = inputs[0].get_fq2();
@@ -491,6 +503,13 @@ pub fn constant_line_eval_c0(
             add_line(compute_ctx, selector.clone(), is_neg)
         };
 
+        debug!(
+            "lambda: {:?}, p_point.x {:?} for selector {:?}",
+            lambda,
+            p_point.x().unwrap(),
+            selector
+        );
+
         let mut c0 = lambda;
         c0.mul_assign_by_basefield(&p_point.x().unwrap());
 
@@ -513,6 +532,13 @@ pub fn constant_line_eval_c1(
         } else {
             add_line(compute_ctx, selector.clone(), is_neg)
         };
+
+        debug!(
+            "-bias: {:?}, p_point.x {:?} for selector {:?}",
+            v.neg(),
+            p_point.y().unwrap(),
+            selector
+        );
 
         let mut c1 = v.neg();
         c1.mul_assign_by_basefield(&p_point.y().unwrap());

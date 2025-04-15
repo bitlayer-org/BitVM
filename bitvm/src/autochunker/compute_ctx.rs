@@ -1,6 +1,6 @@
 use crate::autochunker::primitve_functions::{mul_by_2char_neg, mul_by_char};
 use crate::autochunker::{intermediate_state::*, proof::RawProof};
-use crate::bn254::ell_coeffs::{ell_affine, AffinePairing, BnAffinePairing, G2Prepared};
+use crate::bn254::ell_coeffs::{ell_affine, AffinePairing, BnAffinePairing, EllCoeff, G2Prepared};
 use crate::bn254::fp254impl::Fp254Impl;
 use crate::bn254::utils::fq_to_bits;
 use crate::groth16::constants::{LAMBDA, T};
@@ -48,7 +48,7 @@ pub struct ComputeCtx {
 
 impl From<RawProof> for ComputeCtx {
     fn from(raw_proof: RawProof) -> Self {
-        info!("proof public inputs: {}", raw_proof.public.len());
+        debug!("proof public inputs: {}", raw_proof.public.len());
 
         let mut msm_scalar = raw_proof.public.clone();
         msm_scalar.reverse();
@@ -152,11 +152,26 @@ impl From<RawProof> for ComputeCtx {
                     );
 
                     // line evaluation
-                    let mut g = f.clone();
+                    let mut g = Fq12::one();
                     for (coeff_1, coeff_2, coeffs) in pairs.iter_mut() {
-                        ell_affine(&mut f, &coeffs.next().unwrap(), coeff_1, coeff_2);
+                        let cur_coeffs = coeffs.next().unwrap();
+                        let x = line_ell_affine(&cur_coeffs, coeff_1, coeff_2);
+                        g = g * x; // g = eval(p2) * eval(p3) * eval(p4)
+
+                        let mut f_clone = f.clone();
+                        ell_affine(&mut f_clone, &cur_coeffs, &coeff_1, &coeff_2);
+                        assert_eq!(f_clone, f * x);
+
+                        debug!(
+                            "selector: {:?} line evaluation: {:?}, lambda: {:?}, -v: {:?}, px: {:?}, order p2, p3, p4",
+                            Selector::Loop(i, LoopSelector::MultiSquareEval),
+                            x,
+                            &cur_coeffs.1,
+                            &cur_coeffs.2,
+                            &coeff_1
+                        );
                     }
-                    g = f / g; // g = eval(p2) * eval(p3) * eval(p4)
+                    f = f * g;
                     line_evaluation.insert(
                         Selector::Loop(i, LoopSelector::MultiSquareEval),
                         g.c1 / g.c0,
@@ -192,11 +207,20 @@ impl From<RawProof> for ComputeCtx {
                         );
 
                         // line evaluation
-                        let mut g = f;
+                        let mut g = Fq12::one();
                         for (coeff_1, coeff_2, coeffs) in pairs.iter_mut() {
-                            ell_affine(&mut f, &coeffs.next().unwrap(), coeff_1, coeff_2);
+                            let cur_coeffs = coeffs.next().unwrap();
+                            let x = line_ell_affine(&cur_coeffs, coeff_1, coeff_2);
+                            g = g * x; // g = eval(p2) * eval(p3) * eval(p4)
+                            debug!(
+                                "selector: {:?} line evaluation: {:?}, lambda: {:?}, px: {:?}, order p2, p3, p4",
+                                Selector::Loop(i, LoopSelector::MultiAddEval),
+                                x,
+                                &cur_coeffs.1,
+                                &coeff_1
+                            );
                         }
-                        g = f / g;
+                        f = f * g;
                         line_evaluation
                             .insert(Selector::Loop(i, LoopSelector::MultiAddEval), g.c1 / g.c0);
 
@@ -235,11 +259,12 @@ impl From<RawProof> for ComputeCtx {
 
             // frob points
             tpoint_map_insert(&mut tpoint_map, Selector::FrobPoint(1), t2, t3, t4);
-            let mut g = f;
-            for (coeff_1, coeff_2, coeffs) in &mut pairs {
-                ell_affine(&mut f, &coeffs.next().unwrap(), coeff_1, coeff_2);
+            let mut g = Fq12::one();
+            for (coeff_1, coeff_2, coeffs) in pairs.iter_mut() {
+                let x = line_ell_affine(&coeffs.next().unwrap(), coeff_1, coeff_2);
+                g = g * x // g = eval(p2) * eval(p3) * eval(p4)
             }
-            g = f / g;
+            f = f * g;
             line_evaluation.insert(Selector::MultiFrobEval(1), g.c1 / g.c0);
             t2 = (t2 + mul_by_char(q2)).into_affine();
             t3 = (t3 + mul_by_char(q3)).into_affine();
@@ -248,11 +273,12 @@ impl From<RawProof> for ComputeCtx {
 
             // frob2 points
             tpoint_map_insert(&mut tpoint_map, Selector::FrobPoint(2), t2, t3, t4);
-            let mut g = f;
-            for (coeff_1, coeff_2, coeffs) in &mut pairs {
-                ell_affine(&mut f, &coeffs.next().unwrap(), coeff_1, coeff_2);
+            let mut g = Fq12::one();
+            for (coeff_1, coeff_2, coeffs) in pairs.iter_mut() {
+                let x = line_ell_affine(&coeffs.next().unwrap(), coeff_1, coeff_2);
+                g = g * x // g = eval(p2) * eval(p3) * eval(p4)
             }
-            g = f / g;
+            f = f * g;
             line_evaluation.insert(Selector::MultiFrobEval(2), g.c1 / g.c0);
             f_map.insert(Selector::MultiFrobEval(2), f.c1 / f.c0);
 
@@ -307,10 +333,30 @@ pub fn tpoint_map_insert(
     t3: G2Affine,
     t4: G2Affine,
 ) {
-    debug!("tpoint_map_insert: {:?}", selector);
+    debug!(
+        "tpoint_map_insert: {:?}, t2: {:?}, t3: {:?}, t4: {:?}",
+        selector, t2, t3, t4
+    );
     t_point_map.insert(TPointSelector::T2(selector.clone()), t2);
     t_point_map.insert(TPointSelector::T3(selector.clone()), t3);
     t_point_map.insert(TPointSelector::T4(selector), t4);
+}
+
+// Helper function to perform line function evaluation in affine coordinates
+fn line_ell_affine(coeffs: &EllCoeff, xx: &ark_bn254::Fq, yy: &ark_bn254::Fq) -> ark_bn254::Fq12 {
+    // c0 is a trivial value 1
+    let c0 = coeffs.0;
+    let mut c1 = coeffs.1;
+    let mut c2 = coeffs.2;
+
+    // line evaluation is y' * f_Q(P), coefficients are (1, x' * lambda, -y' * bias)
+    c1.mul_assign_by_fp(xx);
+    c2.mul_assign_by_fp(yy);
+
+    Fq12::new(
+        Fq6::new(Fq2::from(c0), Fq2::from(0), Fq2::from(0)),
+        Fq6::new(Fq2::from(c1), Fq2::from(c2), Fq2::from(0)),
+    )
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -496,4 +542,7 @@ mod tests {
         let raw_proof = RawProof::mock_proof();
         let _: ComputeCtx = raw_proof.into();
     }
+
+    #[test_log::test]
+    fn test_ell() { todo!() }
 }

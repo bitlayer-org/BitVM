@@ -9,6 +9,7 @@ use crate::autochunker::intermediate_state::*;
 use crate::autochunker::primitve_functions::*;
 use crate::autochunker::proof::*;
 use ark_bn254::Config as Bn254Config;
+use ark_bn254::{Fq, Fq12, Fq2, Fq6};
 use ark_ec::bn::BnConfig;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
@@ -208,7 +209,7 @@ fn main_test() {
                 &q4x,
                 &q4y,
                 &q4y_neg,
-                &p3_tweak,
+                &p4_tweak,
                 bit,
                 &Selector::Loop(i, LoopSelector::AddPoint),
             );
@@ -300,7 +301,7 @@ fn main_test() {
             &t4y,
             &q4x_p,
             &q4y_p,
-            &p4,
+            &p4_tweak,
             &Selector::FrobPoint(1),
         );
         (t4x, t4y) = (res.0, res.1);
@@ -341,8 +342,8 @@ fn main_test() {
             &t4y,
             &q4x_p2,
             &q4y_p2,
-            &p4,
-            &Selector::FrobPoint(1),
+            &p4_tweak,
+            &Selector::FrobPoint(2),
         );
         (t4x, t4y) = (res.0, res.1);
         let (t4_c0, t4_c1) = (res.2, res.3);
@@ -429,6 +430,8 @@ fn main_test() {
     let mut compute_ctx = RawProof::mock_proof().into();
     compute_states(&ctx, &mut compute_ctx);
 
+    show_all_states(&ctx);
+
     // query state
     for i in 0..5 {
         info!(
@@ -438,14 +441,27 @@ fn main_test() {
         );
     }
 
+    let t4_c0 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t4_c0").get_fq2();
+    let t4_c1 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t4_c1").get_fq2();
+    let t3_c0 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t2_t3_t3_c0").get_fq2();
+    let t3_c1 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t2_t3_t3_c1").get_fq2();
+    let t2_c0 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t2_t3_t2_c0").get_fq2();
+    let t2_c1 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t2_t3_t2_c1").get_fq2();
+    let g0 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_eval_g0").get_fq2();
+    let g1 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_eval_g1").get_fq2();
+    let g2 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_eval_g2").get_fq2();
+
+    let result = Fq12::new(Fq6::from(1), Fq6::new(t4_c0, t4_c1, Fq2::from(0)))
+        * Fq12::new(Fq6::from(1), Fq6::new(t3_c0, t3_c1, Fq2::from(0)))
+        * Fq12::new(Fq6::from(1), Fq6::new(t2_c0, t2_c1, Fq2::from(0)));
+    assert_eq!(result.c1 / result.c0, Fq6::new(g0, g1, g2));
+
     for i in 0..3 {
         info!(
             "f_final: {:?}",
             get_state(&ctx, &format!("groth16_verifier_final__check_f{}", i))
         );
     }
-
-    show_all_states(&ctx);
 
     info!("the cost time of computing states: {:?}", time.elapsed());
 
@@ -489,14 +505,14 @@ pub fn show_all_states(ctx: &GraphContext) {
         match state {
             State::CheckValid(Some(x)) => {
                 if !x {
-                    warn!("{} state fail to check : {:?}", name, state);
+                    panic!("{} state fail to check : {:?}", name, state);
                 }
             }
             x => {
                 if !x.is_filled() {
                     panic!("{} state are not filled: {:?}", name, x);
                 }
-                info!("{} state: {:?}", name, x);
+                debug!("{} state: {:?}", name, x);
             }
         }
     }
