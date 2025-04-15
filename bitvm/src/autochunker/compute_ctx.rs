@@ -21,6 +21,7 @@ use itertools::Itertools;
 use log::{debug, error, info, warn};
 use num_bigint::BigUint;
 use std::collections::HashMap;
+use std::ops::MulAssign;
 use std::sync::Arc;
 
 pub type ComputeFn = Box<dyn Fn(&mut ComputeCtx, Vec<State>) -> State>;
@@ -174,14 +175,14 @@ impl From<RawProof> for ComputeCtx {
 
                     let bit = Config::ATE_LOOP_COUNT[i - 1];
 
-                    if bit == 1 {
-                        f = f * c_inv;
-                    } else if bit == -1 {
-                        f = f * c;
-                    }
-                    f_map.insert(Selector::Loop(i, LoopSelector::MultiC), f.c1 / f.c0);
-
                     if bit == 1 || bit == -1 {
+                        if bit == 1 {
+                            f = f * c_inv;
+                        } else if bit == -1 {
+                            f = f * c;
+                        }
+                        f_map.insert(Selector::Loop(i, LoopSelector::MultiC), f.c1 / f.c0);
+
                         tpoint_map_insert(
                             &mut tpoint_map,
                             Selector::Loop(i, LoopSelector::AddPoint),
@@ -209,8 +210,8 @@ impl From<RawProof> for ComputeCtx {
                             t3 = (t3 - q3).into_affine();
                             t4 = (t4 - q4).into_affine();
                         }
+                        f_map.insert(Selector::Loop(i, LoopSelector::MultiAddEval), f.c1 / f.c0);
                     }
-                    f_map.insert(Selector::Loop(i, LoopSelector::MultiAddEval), f.c1 / f.c0);
                 }
                 f
             };
@@ -306,6 +307,7 @@ pub fn tpoint_map_insert(
     t3: G2Affine,
     t4: G2Affine,
 ) {
+    debug!("tpoint_map_insert: {:?}", selector);
     t_point_map.insert(TPointSelector::T2(selector.clone()), t2);
     t_point_map.insert(TPointSelector::T3(selector.clone()), t3);
     t_point_map.insert(TPointSelector::T4(selector), t4);
@@ -340,12 +342,20 @@ pub fn double_line(ctx: &ComputeCtx, selector: TPointSelector) -> (Fq2, Fq2) {
 
 // return: lambda, bias
 pub fn add_line(ctx: &ComputeCtx, selector: TPointSelector, is_neg: bool) -> (Fq2, Fq2) {
-    let (tx, ty) = ctx.tpoints.get(&selector).unwrap().xy().unwrap();
+    let (tx, ty) = ctx
+        .tpoints
+        .get(&selector)
+        .unwrap_or_else(|| panic!("selector: {:?}", selector))
+        .xy()
+        .unwrap();
+
     let q_point = match selector {
         TPointSelector::T2(Selector::FrobPoint(1)) => mul_by_char(ctx.q2),
         TPointSelector::T2(Selector::FrobPoint(2)) => mul_by_2char_neg(ctx.q2),
         TPointSelector::T3(Selector::FrobPoint(1)) => mul_by_char(ctx.q3),
         TPointSelector::T3(Selector::FrobPoint(2)) => mul_by_2char_neg(ctx.q3),
+        TPointSelector::T4(Selector::FrobPoint(1)) => mul_by_char(ctx.q4),
+        TPointSelector::T4(Selector::FrobPoint(2)) => mul_by_2char_neg(ctx.q4),
         TPointSelector::T2(_) => ctx.q2,
         TPointSelector::T3(_) => ctx.q3,
         TPointSelector::T4(_) => ctx.q4,
@@ -354,7 +364,12 @@ pub fn add_line(ctx: &ComputeCtx, selector: TPointSelector, is_neg: bool) -> (Fq
     let q_point = if is_neg { -q_point } else { q_point };
     let (qx, qy) = q_point.xy().unwrap();
 
-    let lambda = (ty - qy) / (tx - qx);
+    // let lambda = (ty - qy) / (tx - qx);
+    let mut lambda = ty - qy;
+    lambda.mul_assign((tx - qx).inverse().expect(&format!(
+        "should not be zero, tx: {}, qx: {}, selector: {:?}",
+        tx, qx, selector
+    )));
     let bias = ty - lambda * tx;
 
     (lambda, bias)

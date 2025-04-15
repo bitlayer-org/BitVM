@@ -476,12 +476,20 @@ pub fn nonconstant_line_evaluate_c1() -> (ComputeFn, ScriptFn) {
     (Box::new(func), placeholder_script_fn())
 }
 
-pub fn constant_line_eval_c0(selector: TPointSelector, is_neg: bool) -> (ComputeFn, ScriptFn) {
+pub fn constant_line_eval_c0(
+    selector: TPointSelector,
+    is_neg: bool,
+    is_double: bool,
+) -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let p_point = inputs[0].get_g1();
 
-        let (lambda, _) = add_line(compute_ctx, selector.clone(), is_neg);
+        let (lambda, _) = if is_double {
+            double_line(compute_ctx, selector.clone())
+        } else {
+            add_line(compute_ctx, selector.clone(), is_neg)
+        };
 
         let mut c0 = lambda;
         c0.mul_assign_by_basefield(&p_point.x().unwrap());
@@ -491,12 +499,20 @@ pub fn constant_line_eval_c0(selector: TPointSelector, is_neg: bool) -> (Compute
     };
     (Box::new(func), placeholder_script_fn())
 }
-pub fn constant_line_eval_c1(selector: TPointSelector, is_neg: bool) -> (ComputeFn, ScriptFn) {
+pub fn constant_line_eval_c1(
+    selector: TPointSelector,
+    is_neg: bool,
+    is_double: bool,
+) -> (ComputeFn, ScriptFn) {
     let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let p_point = inputs[0].get_g1();
 
-        let (lambda, v) = add_line(compute_ctx, selector.clone(), is_neg);
+        let (_, v) = if is_double {
+            double_line(compute_ctx, selector.clone())
+        } else {
+            add_line(compute_ctx, selector.clone(), is_neg)
+        };
 
         let mut c1 = v.neg();
         c1.mul_assign_by_basefield(&p_point.y().unwrap());

@@ -12,6 +12,7 @@ use ark_bn254::Config as Bn254Config;
 use ark_ec::bn::BnConfig;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
+use log::debug;
 use log::info;
 use paste::paste;
 use rayon::prelude::*;
@@ -155,7 +156,6 @@ fn main_test() {
                 &p3_tweak,
                 &p2_tweak,
                 Selector::Loop(i, LoopSelector::DoublePoint),
-                false,
             );
 
             // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
@@ -179,7 +179,7 @@ fn main_test() {
             );
 
             // if ate bit is 1, we need to multiply the c, else we need to multiply the c_inv
-            let bit = Bn254Config::ATE_LOOP_COUNT[i];
+            let bit = Bn254Config::ATE_LOOP_COUNT[i - 1];
 
             if bit == 0 {
                 continue;
@@ -220,7 +220,6 @@ fn main_test() {
                 &p3_tweak,
                 &p2_tweak,
                 Selector::Loop(i, LoopSelector::AddPoint),
-                if bit == 1 { false } else { true },
             );
 
             // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
@@ -237,7 +236,7 @@ fn main_test() {
 
             // (f0, f1, f2) = (f0, f1, f2) * (eval_multi);
             [f0, f1, f2] = new_mul_fq12(
-                &mut ctx.inner_context("c_multi"),
+                &mut ctx.inner_context("add_multi"),
                 [&f0, &f1, &f2],
                 [&eval_multi.0, &eval_multi.1, &eval_multi.2],
                 &Selector::Loop(i, LoopSelector::MultiAddEval),
@@ -312,7 +311,6 @@ fn main_test() {
             &p3_tweak,
             &p2_tweak,
             Selector::FrobPoint(1),
-            false,
         );
 
         // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
@@ -354,7 +352,6 @@ fn main_test() {
             &p3_tweak,
             &p2_tweak,
             Selector::FrobPoint(2),
-            false,
         );
 
         // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
@@ -447,13 +444,15 @@ fn main_test() {
         );
     }
 
+    show_all_states(&ctx);
+
     info!("the cost time of computing states: {:?}", time.elapsed());
 
     ctx.write_local("/Users/yufengzhang/Workplace/bitlayer/graphml2mermaid/graph.graphml")
         .expect("write graph fail");
 }
 
-fn get_state(ctx: &GraphContext, name: &str) -> State {
+pub fn get_state(ctx: &GraphContext, name: &str) -> State {
     let lock_guard = ctx.graph.lock().unwrap();
     let node = match lock_guard.get_node(name.to_string()) {
         Some(node) => node,
@@ -479,4 +478,25 @@ fn get_state(ctx: &GraphContext, name: &str) -> State {
         }
     };
     node.attributes.clone().unwrap().state
+}
+
+pub fn show_all_states(ctx: &GraphContext) {
+    let lock_guard = ctx.graph.lock().unwrap();
+    for name in lock_guard.get_all_node_names() {
+        let node = lock_guard.get_node(name.to_string()).unwrap();
+        let state = node.attributes.clone().unwrap().state;
+        match state {
+            State::CheckValid(Some(x)) => {
+                if !x {
+                    panic!("{} state: {:?}", name, state);
+                }
+            }
+            x => {
+                if !x.is_filled() {
+                    panic!("{} state are not filled: {:?}", name, x);
+                }
+                debug!("{} state: {:?}", name, x);
+            }
+        }
+    }
 }

@@ -1,6 +1,7 @@
 use super::{computation_graph::*, compute_ctx::*, intermediate_state::*, primitve_functions::*};
 use crate::{define_input, define_overide_script, define_script};
-use ark_bn254::{Fq12, Fq2, Fq6, Fq6Config, G2Affine};
+use ark_bn254::Config as Bn254Config;
+use ark_bn254::{Config, Fq12, Fq2, Fq6, Fq6Config, G2Affine};
 use ark_ec::bn::BnConfig;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::MontFp;
@@ -439,22 +440,31 @@ pub fn evaluate_t2_and_t3(
     p3_tweak: &BitVMNode,
     p2_tweak: &BitVMNode,
     selector: Selector,
-    is_neg: bool,
 ) -> (BitVMNode, BitVMNode, BitVMNode, BitVMNode) {
+    let (is_neg, is_double) = match selector {
+        Selector::Loop(i, LoopSelector::AddPoint) => {
+            let bit = Bn254Config::ATE_LOOP_COUNT[i];
+            (if bit == 1 { false } else { true }, false)
+        }
+        Selector::Loop(_, LoopSelector::DoublePoint) => (false, true),
+        Selector::FrobPoint(_) => (false, false),
+        _ => panic!("Invalid selector {:?}", selector),
+    };
+
     // update t3 by chord line
     define_script!(
         ctx,
         t3_c0,
         Fq2,
         [p3_tweak],
-        constant_line_eval_c0(TPointSelector::T3(selector.clone()), is_neg)
+        constant_line_eval_c0(TPointSelector::T3(selector.clone()), is_neg, is_double)
     );
     define_script!(
         ctx,
         t3_c1,
         Fq2,
         [p3_tweak],
-        constant_line_eval_c1(TPointSelector::T3(selector.clone()), is_neg)
+        constant_line_eval_c1(TPointSelector::T3(selector.clone()), is_neg, is_double)
     );
 
     // update t2 by chord line
@@ -463,14 +473,14 @@ pub fn evaluate_t2_and_t3(
         t2_c0,
         Fq2,
         [p2_tweak],
-        constant_line_eval_c0(TPointSelector::T4(selector.clone()), is_neg)
+        constant_line_eval_c0(TPointSelector::T4(selector.clone()), is_neg, is_double)
     );
     define_script!(
         ctx,
         t2_c1,
         Fq2,
         [p2_tweak],
-        constant_line_eval_c1(TPointSelector::T4(selector.clone()), is_neg)
+        constant_line_eval_c1(TPointSelector::T4(selector.clone()), is_neg, is_double)
     );
 
     (t3_c0, t3_c1, t2_c0, t2_c1)
@@ -631,6 +641,7 @@ mod tests {
     use crate::autochunker::intermediate_state::State;
     use crate::autochunker::primitve_functions::mul_by_char;
     use crate::autochunker::proof::RawProof;
+    use crate::autochunker::test::{get_state, show_all_states};
     use crate::{define_input, define_overide_script, define_script};
     use ark_bn254::G2Affine;
     use ark_bn254::{Fq, Fq12, Fq2, Fq6, Fq6Config, G1Affine};
@@ -674,12 +685,6 @@ mod tests {
         _o
     }
 
-    fn get_state(ctx: &GraphContext, name: &str) -> State {
-        let lock_guard = ctx.graph.lock().unwrap();
-        let node = lock_guard.get_node(name.to_string()).unwrap();
-        node.attributes.clone().unwrap().state
-    }
-
     fn get_state_debug(ctx: &GraphContext, name: *const c_char) -> State {
         let rust_string = unsafe {
             let c_str = CStr::from_ptr(name);
@@ -688,24 +693,6 @@ mod tests {
         let state = get_state(ctx, rust_string);
         println!("state: {:?}", state);
         state
-    }
-
-    fn show_all_states(ctx: &GraphContext) {
-        let lock_guard = ctx.graph.lock().unwrap();
-        for name in lock_guard.get_all_node_names() {
-            let node = lock_guard.get_node(name.to_string()).unwrap();
-            let state = node.attributes.clone().unwrap().state;
-            match state {
-                State::CheckValid(Some(x)) => {
-                    if !x {
-                        panic!("{} state: {:?}", name, state);
-                    }
-                }
-                _ => {
-                    info!("{} state: {:?}", name, state);
-                }
-            }
-        }
     }
 
     fn random_fq6() -> Fq6 {
