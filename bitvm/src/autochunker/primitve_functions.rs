@@ -438,9 +438,9 @@ pub fn check_slope_of_tangent_line() -> (ComputeFn, ScriptFn) {
         let t4y = inputs[1].get_fq2();
         let lambda = inputs[2].get_fq2();
 
-        // check if 3 * t4x^2 * lambda = 2 * y^2
+        // check if 3 * t4x^2 * lambda = 2 * y
         State::CheckValid(Some(
-            Fq2::from(3) * t4x.square() * lambda == Fq2::from(2) * t4y.square(),
+            Fq2::from(3) * t4x.square() == Fq2::from(2) * t4y * lambda,
         ))
     };
     (Box::new(func), placeholder_script_fn())

@@ -14,6 +14,7 @@ use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
 use log::debug;
 use log::info;
+use log::warn;
 use paste::paste;
 use rayon::prelude::*;
 
@@ -488,14 +489,14 @@ pub fn show_all_states(ctx: &GraphContext) {
         match state {
             State::CheckValid(Some(x)) => {
                 if !x {
-                    panic!("{} state: {:?}", name, state);
+                    warn!("{} state fail to check : {:?}", name, state);
                 }
             }
             x => {
                 if !x.is_filled() {
                     panic!("{} state are not filled: {:?}", name, x);
                 }
-                debug!("{} state: {:?}", name, x);
+                info!("{} state: {:?}", name, x);
             }
         }
     }

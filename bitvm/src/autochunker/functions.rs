@@ -489,7 +489,7 @@ pub fn evaluate_t2_and_t3(
 // line evaluation multiplication (t4_c0, t4_c1, 0) * (t3_c0, t3_c1, 0) * (t2_c0, t2_c1, 0)
 // equals
 // [1 + (t4_c0, t4_c1, 0) J] * [1 + (t3_c0, t3_c1, 0) J] * [1 + (t2_c0, t2_c1, 0) J]
-pub fn line_evaluate_multiplication(
+pub fn line_evaluate_multiplication_with_hint(
     ctx: &mut GraphContext,
     t4_c0: &BitVMNode,
     t4_c1: &BitVMNode,
@@ -497,23 +497,29 @@ pub fn line_evaluate_multiplication(
     t3_c1: &BitVMNode,
     t2_c0: &BitVMNode,
     t2_c1: &BitVMNode,
-    selector: &Selector,
-) -> (BitVMNode, BitVMNode, BitVMNode) {
+    [g0, g1, g2]: [&BitVMNode; 3],
+) {
     // step 1:
     // [1 + (t4_c0, t4_c1, 0) J] * [1 + (t3_c0, t3_c1, 0) J] ->
     // (1 + (s0, s1, s2) J^2)+ (d0, d1, 0) J ->
     // (m0, m1, m2) + (d0, d1, 0) J
     //
-    // d0 = t3_c0 + t3_c1
-    define_script!(ctx, d0, Fq2, [t3_c0, t3_c1], fq2_add());
-    // d1 = t4_c0 + t4_c1
-    define_script!(ctx, d1, Fq2, [t4_c0, t4_c1], fq2_add());
+    // d0 = t3_c0 + t4_c0
+    define_script!(ctx, d0, Fq2, [t3_c0, t4_c0], fq2_add());
+    // d1 = t3_c1 + t4_c1
+    define_script!(ctx, d1, Fq2, [t3_c1, t4_c1], fq2_add());
+
+    // t3_sum = t3_c0 + t3_c1
+    define_script!(ctx, t3_sum, Fq2, [t3_c0, t3_c1], fq2_add());
+    // t4_sum = t4_c0 + t4_c1
+    define_script!(ctx, t4_sum, Fq2, [t4_c0, t4_c1], fq2_add());
+
     // s0 = t4_c0 * t3_c0
     define_script!(ctx, s0, Fq2, [t4_c0, t3_c0], fq2_mul());
     // s2 = t4_c1 * t3_c1
     define_script!(ctx, s2, Fq2, [t4_c1, t3_c1], fq2_mul());
     // [b]inomial = (t3_c0 + t3_c1) * (t4_c0 + t4_c1)
-    define_script!(ctx, b, Fq2, [d0, d1], fq2_mul());
+    define_script!(ctx, b, Fq2, [t3_sum, t4_sum], fq2_mul());
     // s1 = b - s0 - s2
     define_script!(ctx, s1, Fq2, [b, s0, s2], fq2_sub2());
     // (m0, m1, m2) = (s0, s1, s2) * mul_fq6_by_nonresidue + 1
@@ -525,7 +531,7 @@ pub fn line_evaluate_multiplication(
     //
     // step 2:
     // [ (m0, m1, m2) + (d0, d1, 0) J ] * [1 + (t2_c0, t2_c1, 0) J] ->
-    // (1 + (e0, e1, e2) J^2) + ((d0, d1, 0) + (t2_c0, t2_c1, 0) * (m0, m1, m2) ) J ->
+    // ((m0, m1, m2) + (e0, e1, e2) J^2) + ((d0, d1, 0) + (t2_c0, t2_c1, 0) * (m0, m1, m2) ) J ->
     // ((m0, m1, m2) + (h0, h1, h2)) +  ((d0, d1, 0) + (t2_c0, t2_c1, 0) * (m0, m1, m2) ) J
     //
     // d_sum = d0 + d1
@@ -544,8 +550,7 @@ pub fn line_evaluate_multiplication(
     //             = (e2 * (9+u), e0, e1) + 1
     //             = (e2 * (9+u) + 1, e0, e1)
     define_script!(ctx, e2_tweak, Fq2, [e2], fq2_mul_nonresidue());
-    define_script!(ctx, h0, Fq2, [e2_tweak], fq2_plus_one());
-    let (h1, h2) = (e0, e1);
+    let (h0, h1, h2) = (e2_tweak, e0, e1);
     //
     // step 3:
     // ((m0, m1, m2) + (h0, h1, h2)) +  ((d0, d1, 0) + (t2_c0, t2_c1, 0) * (m0, m1, m2) ) J ->
@@ -573,15 +578,36 @@ pub fn line_evaluate_multiplication(
     // 1 + (dk0, dk1, dk2) * 1 / (mh0, mh1, mh2) J ->
     // 1 + (g0, g1, g2) J, and check (g0, g1, g2) * (mh0, mh1, mh2) == (dk0, dk1, dk2)
     //
-    define_input!(ctx, g0, Fq2, extract_line_evaluation_g(0, selector.clone()));
-    define_input!(ctx, g1, Fq2, extract_line_evaluation_g(1, selector.clone()));
-    define_input!(ctx, g2, Fq2, extract_line_evaluation_g(2, selector.clone()));
-    //
-    // check if (g0, g1, g2) * (mh0, mh1, mh2) == (dk0, dk1, dk2)
     let [x0, x1, x2] = new_mul_fq6(ctx, [&g0, &g1, &g2], [&mh0, &mh1, &mh2]);
     define_script!(ctx, _check_mul_x0, CheckValid, [x0, dk0], check_fq2_equal());
     define_script!(ctx, _check_mul_x1, CheckValid, [x1, dk1], check_fq2_equal());
     define_script!(ctx, _check_mul_x2, CheckValid, [x2, dk2], check_fq2_equal());
+}
+
+pub fn line_evaluate_multiplication(
+    ctx: &mut GraphContext,
+    t4_c0: &BitVMNode,
+    t4_c1: &BitVMNode,
+    t3_c0: &BitVMNode,
+    t3_c1: &BitVMNode,
+    t2_c0: &BitVMNode,
+    t2_c1: &BitVMNode,
+    selector: &Selector,
+) -> (BitVMNode, BitVMNode, BitVMNode) {
+    define_input!(ctx, g0, Fq2, extract_line_evaluation_g(0, selector.clone()));
+    define_input!(ctx, g1, Fq2, extract_line_evaluation_g(1, selector.clone()));
+    define_input!(ctx, g2, Fq2, extract_line_evaluation_g(2, selector.clone()));
+
+    line_evaluate_multiplication_with_hint(
+        ctx,
+        t4_c0,
+        t4_c1,
+        t3_c0,
+        t3_c1,
+        t2_c0,
+        t2_c1,
+        [&g0, &g1, &g2],
+    );
 
     (g0, g1, g2)
 }
@@ -635,8 +661,9 @@ mod tests {
     };
     use crate::autochunker::compute_ctx::ComputeCtx;
     use crate::autochunker::functions::{
-        fq12_frobinus_map, mul_by_2char_neg, new_mul_fq12, new_mul_fq12_with_hint, new_mul_fq6,
-        new_square_fq12, new_square_fq12_with_hint, new_square_fq6, t4_double_by_tangent_line,
+        fq12_frobinus_map, line_evaluate_multiplication_with_hint, mul_by_2char_neg, new_mul_fq12,
+        new_mul_fq12_with_hint, new_mul_fq6, new_square_fq12, new_square_fq12_with_hint,
+        new_square_fq6, t4_double_by_tangent_line,
     };
     use crate::autochunker::intermediate_state::State;
     use crate::autochunker::primitve_functions::mul_by_char;
@@ -880,5 +907,49 @@ mod tests {
         info!("neg_frob2_g2: {:?}", neg_frob2_g2);
         info!("g2_tweak: {:?}", g2_tweak);
         assert_eq!(neg_frob2_g2, g2_tweak);
+    }
+
+    #[test_log::test]
+    fn test_line_evaluation() {
+        let t2 = Fq6::new(Fq2::from(1), Fq2::from(2), Fq2::from(0));
+        let t3 = Fq6::new(Fq2::from(4), Fq2::from(5), Fq2::from(0));
+        let t4 = Fq6::new(Fq2::from(7), Fq2::from(8), Fq2::from(0));
+
+        let (real_t2, real_t3, real_t4) = (
+            Fq12::new(Fq6::from(1), t2),
+            Fq12::new(Fq6::from(1), t3),
+            Fq12::new(Fq6::from(1), t4),
+        );
+
+        let evaluation_multi = real_t2 * real_t3 * real_t4;
+        let g = evaluation_multi.c1 / evaluation_multi.c0;
+
+        let mut ctx = GraphContext::new("test");
+        let [t2_c0, t2_c1, t2_c2] = new_fq6(&mut ctx.inner_context("t2"), t2);
+        let [t3_c0, t3_c1, t3_c2] = new_fq6(&mut ctx.inner_context("t3"), t3);
+        let [t4_c0, t4_c1, t4_c2] = new_fq6(&mut ctx.inner_context("t4"), t4);
+        let [g_c0, g_c1, g_c2] = new_fq6(&mut ctx.inner_context("g"), g);
+
+        line_evaluate_multiplication_with_hint(
+            &mut ctx,
+            &t4_c0,
+            &t4_c1,
+            &t3_c0,
+            &t3_c1,
+            &t2_c0,
+            &t2_c1,
+            [&g_c0, &g_c1, &g_c2],
+        );
+
+        // compute states
+        let mut compute_ctx = RawProof::mock_proof().into();
+        compute_states(&ctx, &mut compute_ctx);
+
+        // check result
+        show_all_states(&ctx);
+
+        info! {"(m0, m1, m2) + (d0, d1, 0)J: {:?}", (real_t3 * real_t4)};
+        info! {"(mh0, mh1, mh2) + (dk0, dk1, dk2)J: {:?}", (real_t2 * real_t3 * real_t4)};
+        info! {"(e0, e1, e2): {:?}", (real_t3 * real_t4).c1 * real_t2.c1}
     }
 }
