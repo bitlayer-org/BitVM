@@ -436,6 +436,7 @@ fn main_test() {
     generate_script_cache(&ctx, &compute_ctx);
 
     // merge and organize scripts
+    graph_partition(&ctx, &compute_ctx);
 
     // query state
     {

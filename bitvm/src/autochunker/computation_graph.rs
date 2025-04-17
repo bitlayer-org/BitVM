@@ -400,3 +400,11 @@ pub fn load_script_cache() {
 pub fn save_script_cache() {
     todo! {}
 }
+
+pub fn graph_partition(
+    graph_ctx: &GraphContext,
+    ctx: &ComputeCtx,
+) -> (Vec<BitVMGraph>, Vec<BitVMGraph>) {
+    let mut graph = graph_ctx.graph.lock().unwrap();
+    todo!()
+}
