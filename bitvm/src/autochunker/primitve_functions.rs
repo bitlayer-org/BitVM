@@ -17,10 +17,9 @@ use num_bigint::BigUint;
 use std::sync::Arc;
 
 pub fn placeholder_script_fn() -> ScriptFn {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
-        assert_eq!(inputs.len(), 1);
-        let script = script! {};
-        let data = vec![];
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        let script = script! {}; // len(script) = 0
+        let data = vec![vec![0; 100]]; // len(data) = 100
         (script, data)
     };
     Box::new(func)
@@ -31,7 +30,7 @@ pub fn msm_initial(window: usize) -> (ComputeFn, ScriptFn) {
     // the first step of msm
     let (index, chunk_index) = (0, 0);
 
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert!(inputs.len() == 1);
 
         // get the scalar and base
@@ -68,7 +67,7 @@ pub fn windows_of_mul_table(window: usize) -> usize {
 }
 
 pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert!(inputs.len() == 2);
 
         // get the accumulator of msm
@@ -103,7 +102,7 @@ pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn,
 }
 
 pub fn scalar_valid() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         State::CheckValid(Some(true))
     };
@@ -113,7 +112,7 @@ pub fn scalar_valid() -> (ComputeFn, ScriptFn) {
 
 // check validation of a G1 point
 pub fn check_g1_point() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         State::CheckValid(Some(true))
     };
@@ -123,7 +122,7 @@ pub fn check_g1_point() -> (ComputeFn, ScriptFn) {
 
 // for the optimization of line evaluation
 pub fn tweak_point() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let point = inputs[0].get_g1();
         let tweak_point = G1 {
@@ -137,7 +136,7 @@ pub fn tweak_point() -> (ComputeFn, ScriptFn) {
 }
 
 pub fn neg_fq2() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let fq2 = inputs[0].get_fq2();
         State::Fq2(Some(fq2.neg()))
@@ -147,7 +146,7 @@ pub fn neg_fq2() -> (ComputeFn, ScriptFn) {
 
 pub fn fq2_mul_lc4() -> (ComputeFn, ScriptFn) {
     (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+        Box::new(|_: &ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 4);
             let a = inputs[0].get_fq2();
             let b = inputs[1].get_fq2();
@@ -162,7 +161,7 @@ pub fn fq2_mul_lc4() -> (ComputeFn, ScriptFn) {
 
 pub fn fq2_mul_nonresidue() -> (ComputeFn, ScriptFn) {
     (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+        Box::new(|_: &ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 1);
             let a = inputs[0].get_fq2();
             let b = a * Fq6Config::NONRESIDUE;
@@ -174,7 +173,7 @@ pub fn fq2_mul_nonresidue() -> (ComputeFn, ScriptFn) {
 
 pub fn fq2_plus_one() -> (ComputeFn, ScriptFn) {
     (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+        Box::new(|_: &ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 1);
             let a = inputs[0].get_fq2();
             let b = a + Fq2::from(1);
@@ -186,7 +185,7 @@ pub fn fq2_plus_one() -> (ComputeFn, ScriptFn) {
 
 pub fn fq2_add() -> (ComputeFn, ScriptFn) {
     (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+        Box::new(|_: &ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 2);
             let a = inputs[0].get_fq2();
             let b = inputs[1].get_fq2();
@@ -199,7 +198,7 @@ pub fn fq2_add() -> (ComputeFn, ScriptFn) {
 
 pub fn fq2_mul() -> (ComputeFn, ScriptFn) {
     (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+        Box::new(|_: &ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 2);
             let a = inputs[0].get_fq2();
             let b = inputs[1].get_fq2();
@@ -212,7 +211,7 @@ pub fn fq2_mul() -> (ComputeFn, ScriptFn) {
 
 pub fn fq2_sub() -> (ComputeFn, ScriptFn) {
     (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+        Box::new(|_: &ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 2);
             let a = inputs[0].get_fq2();
             let b = inputs[1].get_fq2();
@@ -225,7 +224,7 @@ pub fn fq2_sub() -> (ComputeFn, ScriptFn) {
 
 pub fn fq2_sub2() -> (ComputeFn, ScriptFn) {
     (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+        Box::new(|_: &ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 3);
             let a = inputs[0].get_fq2();
             let b = inputs[1].get_fq2();
@@ -239,7 +238,7 @@ pub fn fq2_sub2() -> (ComputeFn, ScriptFn) {
 
 pub fn fq2_neg() -> (ComputeFn, ScriptFn) {
     (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+        Box::new(|_: &ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 1);
             let a = inputs[0].get_fq2();
             let b = a.neg();
@@ -250,7 +249,7 @@ pub fn fq2_neg() -> (ComputeFn, ScriptFn) {
 }
 
 pub fn fq2_div6() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert!(inputs.len() == 1);
         let c0 = inputs[0].get_fq2();
         let c0_tweak = c0 / Fq2::from(6);
@@ -260,7 +259,7 @@ pub fn fq2_div6() -> (ComputeFn, ScriptFn) {
 }
 
 pub fn fq2_div2() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert!(inputs.len() == 1);
         let c0 = inputs[0].get_fq2();
         let c0_tweak = c0 / Fq2::from(2);
@@ -271,7 +270,7 @@ pub fn fq2_div2() -> (ComputeFn, ScriptFn) {
 
 pub fn check_fq2_equal() -> (ComputeFn, ScriptFn) {
     (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+        Box::new(|_: &ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 2);
             let a = inputs[0].get_fq2();
             let b = inputs[1].get_fq2();
@@ -283,7 +282,7 @@ pub fn check_fq2_equal() -> (ComputeFn, ScriptFn) {
 
 pub fn fq2_mul_by_constant(x: Fq2) -> (ComputeFn, ScriptFn) {
     (
-        Box::new(move |_: &mut ComputeCtx, inputs: Vec<State>| {
+        Box::new(move |_: &ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 1);
             let a = inputs[0].get_fq2();
             let b = a * x;
@@ -302,7 +301,7 @@ pub fn fq2_mul_by_integer(i: i32) -> (ComputeFn, ScriptFn) {
 
 pub fn fq2_square() -> (ComputeFn, ScriptFn) {
     (
-        Box::new(|_: &mut ComputeCtx, inputs: Vec<State>| {
+        Box::new(|_: &ComputeCtx, inputs: Vec<State>| {
             assert!(inputs.len() == 1);
             let a = inputs[0].get_fq2();
             let b = a.square();
@@ -313,7 +312,7 @@ pub fn fq2_square() -> (ComputeFn, ScriptFn) {
 }
 
 pub fn fq2_conjugate() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let mut fq2 = inputs[0].get_fq2();
         fq2.conjugate_in_place();
@@ -324,7 +323,7 @@ pub fn fq2_conjugate() -> (ComputeFn, ScriptFn) {
 
 pub fn fq2_frobinus_map(power: usize) -> (ComputeFn, ScriptFn) {
     assert!(power <= 3 && power >= 1, "power out of range: {}", power);
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let x = inputs[0].get_fq2();
         let y = x.frobenius_map(power);
@@ -367,7 +366,7 @@ pub fn mul_by_2char_neg(r: G2Affine) -> G2Affine {
 
 // inputs
 pub fn add_chord_line_x() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 3);
         let t4x = inputs[0].get_fq2();
         let q4x = inputs[1].get_fq2();
@@ -386,7 +385,7 @@ pub fn add_chord_line_y() -> (ComputeFn, ScriptFn) { double_tangent_line_y() }
 
 // inputs t4x, lambda, v
 pub fn double_tangent_line_y() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 3);
         let t4x_new = inputs[0].get_fq2();
         let lambda = inputs[1].get_fq2();
@@ -403,7 +402,7 @@ pub fn double_tangent_line_y() -> (ComputeFn, ScriptFn) {
 
 // inputs: t4x, lambda
 pub fn double_tangent_line_x() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 2);
         let t4x = inputs[0].get_fq2();
         let lambda = inputs[1].get_fq2();
@@ -418,7 +417,7 @@ pub fn double_tangent_line_x() -> (ComputeFn, ScriptFn) {
 
 // inputs: t4x, t4y, lambda, v
 pub fn check_line_through_point(selector: Selector) -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 4);
         let t4x = inputs[0].get_fq2();
         let t4y = inputs[1].get_fq2();
@@ -437,7 +436,7 @@ pub fn check_line_through_point(selector: Selector) -> (ComputeFn, ScriptFn) {
 }
 
 pub fn check_slope_of_tangent_line() -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 3);
         let t4x = inputs[0].get_fq2();
         let t4y = inputs[1].get_fq2();
@@ -452,7 +451,7 @@ pub fn check_slope_of_tangent_line() -> (ComputeFn, ScriptFn) {
 }
 
 pub fn nonconstant_line_evaluate_c0(selector: Selector) -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 2);
         let lambda = inputs[0].get_fq2();
         let p4 = inputs[1].get_g1();
@@ -474,7 +473,7 @@ pub fn nonconstant_line_evaluate_c0(selector: Selector) -> (ComputeFn, ScriptFn)
 }
 
 pub fn nonconstant_line_evaluate_c1(selector: Selector) -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 2);
         let v = inputs[0].get_fq2();
         let p4 = inputs[1].get_g1();
@@ -493,7 +492,7 @@ pub fn constant_line_eval_c0(
     is_neg: bool,
     is_double: bool,
 ) -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let p_point = inputs[0].get_g1();
 
@@ -523,7 +522,7 @@ pub fn constant_line_eval_c1(
     is_neg: bool,
     is_double: bool,
 ) -> (ComputeFn, ScriptFn) {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let p_point = inputs[0].get_g1();
 

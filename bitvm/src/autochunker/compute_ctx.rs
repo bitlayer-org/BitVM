@@ -15,7 +15,7 @@ use ark_ff::{AdditiveGroup, Field, One, PrimeField};
 use ark_ff::{CyclotomicMultSubgroup, Fp6Config};
 use ark_std::cfg_chunks_mut;
 use bitcoin::hashes::hash160::Hash;
-use bitcoin_script::{script, Script};
+use bitcoin_script::script;
 use core::ops::Neg;
 use itertools::Itertools;
 use log::{debug, error, info, warn};
@@ -24,8 +24,10 @@ use std::collections::HashMap;
 use std::ops::MulAssign;
 use std::sync::Arc;
 
-pub type ComputeFn = Box<dyn Fn(&mut ComputeCtx, Vec<State>) -> State>;
-pub type ScriptFn = Box<dyn Fn(&mut ComputeCtx, Vec<State>) -> (Script, Vec<Vec<u8>>)>;
+pub type Script = bitcoin_script::Script;
+pub type Witness = Vec<Vec<u8>>;
+pub type ComputeFn = Box<dyn Fn(&ComputeCtx, Vec<State>) -> State>;
+pub type ScriptFn = Box<dyn Fn(&ComputeCtx, Vec<State>) -> (Script, Witness)>;
 
 #[derive(Debug, Clone)]
 pub struct ComputeCtx {
@@ -69,14 +71,14 @@ impl From<RawProof> for ComputeCtx {
                 i, msm_gs[i], msm_scalar[i], result
             );
             p3 += result;
-            info!(
+            debug!(
                 "rawproof result of msm step {}: {:?}",
                 i,
                 p3.clone().into_affine()
             );
         }
 
-        info!("rawproof result of msm: {:?}", p3.clone().into_affine());
+        debug!("rawproof result of msm: {:?}", p3.clone().into_affine());
 
         let p3 = p3.into_affine();
 
@@ -422,35 +424,35 @@ pub fn add_line(ctx: &ComputeCtx, selector: TPointSelector, is_neg: bool) -> (Fq
 }
 
 pub fn extract_double_lambda(selector: TPointSelector) -> ComputeFn {
-    let func = move |ctx: &mut ComputeCtx, _: Vec<State>| -> State {
+    let func = move |ctx: &ComputeCtx, _: Vec<State>| -> State {
         State::Fq2(Some(double_line(ctx, selector.clone()).0))
     };
     Box::new(func)
 }
 
 pub fn extract_double_bias(selector: TPointSelector) -> ComputeFn {
-    let func = move |ctx: &mut ComputeCtx, _: Vec<State>| -> State {
+    let func = move |ctx: &ComputeCtx, _: Vec<State>| -> State {
         State::Fq2(Some(double_line(ctx, selector.clone()).1))
     };
     Box::new(func)
 }
 
 pub fn extract_add_lambda(selector: TPointSelector, is_neg: bool) -> ComputeFn {
-    let func = move |ctx: &mut ComputeCtx, _: Vec<State>| -> State {
+    let func = move |ctx: &ComputeCtx, _: Vec<State>| -> State {
         State::Fq2(Some(add_line(ctx, selector.clone(), is_neg).0))
     };
     Box::new(func)
 }
 
 pub fn extract_add_bias(selector: TPointSelector, is_neg: bool) -> ComputeFn {
-    let func = move |ctx: &mut ComputeCtx, _: Vec<State>| -> State {
+    let func = move |ctx: &ComputeCtx, _: Vec<State>| -> State {
         State::Fq2(Some(add_line(ctx, selector.clone(), is_neg).1))
     };
     Box::new(func)
 }
 
 pub fn extract_scalar(index: usize) -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, _inputs: Vec<State>| -> State {
         State::Fr(Some(
             compute_ctx
                 .msm_scalars
@@ -464,21 +466,21 @@ pub fn extract_scalar(index: usize) -> ComputeFn {
 
 // extract proof.c
 pub fn extract_p2() -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, _inputs: Vec<State>| -> State {
         State::G1(Some(compute_ctx.p2.clone()))
     };
     Box::new(func)
 }
 
 pub fn extract_q4x() -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, _inputs: Vec<State>| -> State {
         State::Fq2(Some(compute_ctx.q4.x().unwrap()))
     };
     Box::new(func)
 }
 
 pub fn extract_q4y() -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, _inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, _inputs: Vec<State>| -> State {
         State::Fq2(Some(compute_ctx.q4.y().unwrap()))
     };
     Box::new(func)
@@ -486,14 +488,14 @@ pub fn extract_q4y() -> ComputeFn {
 
 // extrac proof.a
 pub fn extract_p4() -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         State::G1(Some(compute_ctx.p4.clone()))
     };
     Box::new(func)
 }
 
 pub fn extract_c(idx: usize) -> ComputeFn {
-    let func = move |compute_ctx: &mut ComputeCtx, inputs: Vec<State>| -> State {
+    let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         match idx {
             0 => State::Fq2(Some(compute_ctx.c.c0)),
             1 => State::Fq2(Some(compute_ctx.c.c1)),
@@ -506,7 +508,7 @@ pub fn extract_c(idx: usize) -> ComputeFn {
 
 pub fn extract_line_evaluation_g(index: usize, selector: Selector) -> ComputeFn {
     assert!(index < 3);
-    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
+    Box::new(move |compute_ctx: &ComputeCtx, _: Vec<State>| {
         let g = compute_ctx.line_evaluation.get(&selector).unwrap();
         let select_array = [g.c0, g.c1, g.c2];
         State::Fq2(Some(Fq2::from(select_array[index])))
@@ -515,7 +517,7 @@ pub fn extract_line_evaluation_g(index: usize, selector: Selector) -> ComputeFn 
 
 pub fn extract_eval_multi_f(index: usize, selector: Selector) -> ComputeFn {
     assert!(index < 3);
-    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
+    Box::new(move |compute_ctx: &ComputeCtx, _: Vec<State>| {
         let f = compute_ctx.f.get(&selector).unwrap();
         let select_array = [f.c0, f.c1, f.c2];
         State::Fq2(Some(Fq2::from(select_array[index])))
@@ -524,7 +526,7 @@ pub fn extract_eval_multi_f(index: usize, selector: Selector) -> ComputeFn {
 
 pub fn extract_p1q1(index: usize) -> ComputeFn {
     assert!(index < 3);
-    Box::new(move |compute_ctx: &mut ComputeCtx, _: Vec<State>| {
+    Box::new(move |compute_ctx: &ComputeCtx, _: Vec<State>| {
         let g = compute_ctx.p1q1.clone();
         let select_array = [g.c0, g.c1, g.c2];
         State::Fq2(Some(Fq2::from(select_array[index])))

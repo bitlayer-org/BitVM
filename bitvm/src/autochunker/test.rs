@@ -427,40 +427,51 @@ fn main_test() {
     let time = time::Instant::now();
 
     // compute all states
-    let mut compute_ctx = RawProof::mock_proof().into();
-    compute_states(&ctx, &mut compute_ctx);
+    let compute_ctx = RawProof::mock_proof().into();
+    compute_states(&ctx, &compute_ctx);
 
     show_all_states(&ctx);
 
+    // cache script info
+    generate_script_cache(&ctx, &compute_ctx);
+
+    // merge and organize scripts
+
     // query state
-    for i in 0..5 {
-        info!(
-            "step {}, msm_result: {:?}",
-            i,
-            get_state(&ctx, &format!("groth16_verifier_MSM_{}_31_msm_acc", i))
-        );
-    }
+    {
+        for i in 0..5 {
+            info!(
+                "step {}, msm_result: {:?}",
+                i,
+                get_state(&ctx, &format!("groth16_verifier_MSM_{}_31_msm_acc", i))
+            );
+        }
 
-    let t4_c0 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t4_c0").get_fq2();
-    let t4_c1 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t4_c1").get_fq2();
-    let t3_c0 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t2_t3_t3_c0").get_fq2();
-    let t3_c1 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t2_t3_t3_c1").get_fq2();
-    let t2_c0 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t2_t3_t2_c0").get_fq2();
-    let t2_c1 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t2_t3_t2_c1").get_fq2();
-    let g0 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_eval_g0").get_fq2();
-    let g1 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_eval_g1").get_fq2();
-    let g2 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_eval_g2").get_fq2();
+        let t4_c0 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t4_c0").get_fq2();
+        let t4_c1 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t4_c1").get_fq2();
+        let t3_c0 =
+            get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t2_t3_t3_c0").get_fq2();
+        let t3_c1 =
+            get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t2_t3_t3_c1").get_fq2();
+        let t2_c0 =
+            get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t2_t3_t2_c0").get_fq2();
+        let t2_c1 =
+            get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_t2_t3_t2_c1").get_fq2();
+        let g0 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_eval_g0").get_fq2();
+        let g1 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_eval_g1").get_fq2();
+        let g2 = get_state(&ctx, "groth16_verifier_Pairing_ate_loop_64_add_eval_g2").get_fq2();
 
-    let result = Fq12::new(Fq6::from(1), Fq6::new(t4_c0, t4_c1, Fq2::from(0)))
-        * Fq12::new(Fq6::from(1), Fq6::new(t3_c0, t3_c1, Fq2::from(0)))
-        * Fq12::new(Fq6::from(1), Fq6::new(t2_c0, t2_c1, Fq2::from(0)));
-    assert_eq!(result.c1 / result.c0, Fq6::new(g0, g1, g2));
+        let result = Fq12::new(Fq6::from(1), Fq6::new(t4_c0, t4_c1, Fq2::from(0)))
+            * Fq12::new(Fq6::from(1), Fq6::new(t3_c0, t3_c1, Fq2::from(0)))
+            * Fq12::new(Fq6::from(1), Fq6::new(t2_c0, t2_c1, Fq2::from(0)));
+        assert_eq!(result.c1 / result.c0, Fq6::new(g0, g1, g2));
 
-    for i in 0..3 {
-        info!(
-            "f_final: {:?}",
-            get_state(&ctx, &format!("groth16_verifier_final__check_f{}", i))
-        );
+        for i in 0..3 {
+            info!(
+                "f_final: {:?}",
+                get_state(&ctx, &format!("groth16_verifier_final__check_f{}", i))
+            );
+        }
     }
 
     info!("the cost time of computing states: {:?}", time.elapsed());

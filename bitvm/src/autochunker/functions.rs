@@ -711,7 +711,7 @@ mod tests {
             ctx,
             _o,
             Fq2,
-            Box::new(move |_: &mut ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(x))))
+            Box::new(move |_: &ComputeCtx, _: Vec<State>| State::Fq2(Some(Fq2::from(x))))
         );
         _o
     }
@@ -729,7 +729,7 @@ mod tests {
             ctx,
             _o,
             Fq6,
-            Box::new(|_: &mut ComputeCtx, _: Vec<State>| State::G1(Some(
+            Box::new(|_: &ComputeCtx, _: Vec<State>| State::G1(Some(
                 G1Affine::from_random_bytes(b"bytes").unwrap()
             )))
         );
@@ -764,7 +764,7 @@ mod tests {
         let [c0, c1, c2] = new_square_fq6(&mut ctx, [&a0, &a1, &a2]);
         // compute states
         let mut compute_ctx = RawProof::mock_proof().into();
-        compute_states(&ctx, &mut compute_ctx);
+        compute_states(&ctx, &compute_ctx);
         // check result
         let lock_guard = ctx.graph.lock().unwrap();
         let a = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
@@ -793,7 +793,7 @@ mod tests {
             let [c0, c1, c2] = new_mul_fq6(&mut ctx, [&a0, &a1, &a2], [&b0, &b1, &b2]);
             // compute states
             let mut compute_ctx = RawProof::mock_proof().into();
-            compute_states(&ctx, &mut compute_ctx);
+            compute_states(&ctx, &compute_ctx);
 
             // check result
             let a = Fq6::new(Fq2::from(1), Fq2::from(1), Fq2::from(1));
@@ -858,7 +858,7 @@ mod tests {
 
         // compute states
         let mut compute_ctx = RawProof::mock_proof().into();
-        compute_states(&ctx, &mut compute_ctx);
+        compute_states(&ctx, &compute_ctx);
 
         // check result
         show_all_states(&ctx);
@@ -882,7 +882,7 @@ mod tests {
 
         // compute states
         let mut compute_ctx = RawProof::mock_proof().into();
-        let states = compute_states(&ctx, &mut compute_ctx);
+        let states = compute_states(&ctx, &compute_ctx);
 
         assert_eq!(states, ctx.graph.lock().unwrap().number_of_nodes());
 
@@ -902,7 +902,7 @@ mod tests {
 
         // compute states
         let mut compute_ctx = RawProof::mock_proof().into();
-        compute_states(&ctx, &mut compute_ctx);
+        compute_states(&ctx, &compute_ctx);
 
         for (idx, (node, cx)) in vec![b0, b1, b2]
             .into_iter()
@@ -967,7 +967,7 @@ mod tests {
 
         // compute states
         let mut compute_ctx = RawProof::mock_proof().into();
-        compute_states(&ctx, &mut compute_ctx);
+        compute_states(&ctx, &compute_ctx);
 
         // check result
         show_all_states(&ctx);
