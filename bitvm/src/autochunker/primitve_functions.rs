@@ -1,6 +1,7 @@
 use crate::autochunker::{compute_ctx::*, intermediate_state::*, proof::RawProof};
 use crate::bn254::ell_coeffs::{AffinePairing, BnAffinePairing};
 use crate::bn254::fp254impl::Fp254Impl;
+use crate::bn254::fq2::Fq2;
 use crate::bn254::utils::fq_to_bits;
 use crate::groth16::constants::LAMBDA;
 use crate::groth16::offchain_checker::compute_c_wi;
@@ -192,7 +193,12 @@ pub fn fq2_add() -> (ComputeFn, ScriptFn) {
             let c = a + b;
             State::Fq2(Some(c))
         }),
-        placeholder_script_fn(),
+        Box::new(
+            |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+                let script = crate::bn254::fq2::Fq2::add(0, 2);
+                (script, vec![])
+            },
+        ),
     )
 }
 
