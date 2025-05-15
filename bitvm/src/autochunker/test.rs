@@ -430,10 +430,11 @@ fn main_test() {
     let compute_ctx = RawProof::mock_proof().into();
     compute_states(&ctx, &compute_ctx);
 
+    // check all states are valid
     show_all_states(&ctx);
 
-    // cache script info
-    generate_script_cache(&ctx, &compute_ctx);
+    // check all Bitcoin scripts are valid
+    check_all_scripts(&ctx, &compute_ctx);
 
     // merge and organize scripts
     graph_partition(&ctx, &compute_ctx);

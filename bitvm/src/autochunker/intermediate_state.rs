@@ -1,9 +1,9 @@
+use crate::bn254::utils::Hint;
+use crate::{execute_script, ExecuteInfo};
 use ark_bn254::{Fq, Fq2, Fq6, Fr};
 use ark_ec::models::bn::Bn;
 use ark_ec::pairing::Pairing;
 use paste::paste;
-
-use crate::bn254::utils::Hint;
 
 pub type G1 = <Bn<ark_bn254::Config> as Pairing>::G1Affine;
 pub type CheckValid = bool;
@@ -47,7 +47,7 @@ macro_rules! basic_functions {
 }
 
 macro_rules! impl_state_functions {
-    ($($state_type:ident, $fq_count:expr, $bit_cost:expr, $to_witness_func:expr);*) => {
+    ($($state_type:ident, $fq_count:expr, $bit_cost:expr, $to_hint_func:expr);*) => {
         paste!{
         impl State {
             $(
@@ -65,7 +65,7 @@ macro_rules! impl_state_functions {
             #[allow(unused)]
             pub fn to_hint(&self) -> Hint {
                 match self {
-                    $(State::$state_type(Some(x)) => $to_witness_func(x),)*
+                    $(State::$state_type(Some(x)) => $to_hint_func(x),)*
                     _ => panic!("to_witness unexpected state"),
                 }
             }
@@ -115,13 +115,18 @@ impl_state_functions! {
     Fq2, 2, 13196, |x: &Fq2| Hint::Fq2(*x);
     Fr, 1, 6788, |x: &Fr| Hint::Fr(*x);
     Fq6, 6, 123, |x: &Fq6| Hint::Fq6(*x);
-    CheckValid, 0, 0, |x: &CheckValid| {
-        let mut bytes = vec![0; 1];
-        if *x {
-            bytes[0] = 1;
-        } else {
-            bytes[0] = 0;
-        }
-        bytes
+    CheckValid, 0, 0, |x: &CheckValid| { Hint::CheckValid(*x) }
+}
+
+impl State {
+    #[allow(unused)]
+    pub fn to_witness(&self) -> Vec<Vec<u8>> {
+        let exec_info = execute_script(self.to_hint().push());
+        execute_info_to_witness(&exec_info)
     }
+}
+
+// helper function to convert a script to witness
+pub fn execute_info_to_witness(exec_info: &ExecuteInfo) -> Vec<Vec<u8>> {
+    exec_info.final_stack.0.iter_str().collect()
 }

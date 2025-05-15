@@ -12,6 +12,7 @@ use ark_ec::bn::BnConfig;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{AdditiveGroup, Field, One, PrimeField};
 use ark_ff::{Fp6Config, MontFp};
+use bitcoin::witness;
 use bitcoin_script::{script, Script};
 use core::ops::Neg;
 use log::{debug, error, info, warn};
@@ -622,18 +623,18 @@ mod tests {
     }
 
     #[test_log::test]
-    fn test_msm_initial() {
+    fn test_primitive_fn_msm() {
         let raw_proof = RawProof::mock_proof();
         let compute_ctx: ComputeCtx = raw_proof.into();
 
         let inputs = vec![State::Fr(Some(Fr::from(100)))];
         let windows_size = 8;
 
-        let compute_fn = msm_initial(windows_size).0;
-        let script_fn = msm_initial(windows_size).1;
+        let (compute_fn, script_fn) = msm_initial(windows_size);
 
         let state = compute_fn(&compute_ctx, inputs.clone());
         let (script, witness) = script_fn(&compute_ctx, inputs.clone());
         let exec_info = execute_script_with_inputs(script, witness);
+        assert!(exec_info.success);
     }
 }

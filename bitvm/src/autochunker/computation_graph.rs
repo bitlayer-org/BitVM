@@ -1,6 +1,8 @@
+use super::intermediate_state::execute_info_to_witness;
 use super::primitve_functions::placeholder_script_fn;
 use crate::autochunker::compute_ctx::ComputeFn;
 use crate::autochunker::intermediate_state::State;
+use crate::execute_script_with_inputs;
 use bitcoin::hashes::hash160::Hash;
 use bitcoin::witness;
 use core::borrow;
@@ -224,26 +226,28 @@ impl GraphContext {
         new_var_name
     }
 
-    pub fn get_state(&self, name: &str) -> State {
+    pub fn get_node_info(&self, name: &str) -> NodeInfo {
         let graph = self.graph.lock().unwrap();
         let node = graph.get_node(name.to_string()).unwrap();
-        node.attributes.as_ref().unwrap().state.clone()
+        node.attributes.as_ref().unwrap().clone()
     }
-}
 
-// return all states that have been computed
-pub fn compute_states(graph_ctx: &GraphContext, ctx: &ComputeCtx) -> usize {
-    let inputs: Vec<String> = {
-        let graph = graph_ctx.graph.lock().unwrap();
+    pub fn get_state(&self, name: &str) -> State { self.get_node_info(name).state }
 
+    pub fn all_inputs(&self) -> Vec<String> {
+        let graph = self.graph.lock().unwrap();
         graph
             .get_all_node_names()
             .into_iter()
             .filter(|x| graph.get_node_in_degree(x.to_string()).unwrap() == 0)
             .map(|x| x.to_string())
             .collect()
-    };
+    }
+}
 
+// return all states that have been computed
+pub fn compute_states(graph_ctx: &GraphContext, ctx: &ComputeCtx) -> usize {
+    let inputs: Vec<String> = graph_ctx.all_inputs();
     debug!("inputs: {:?}", inputs);
 
     let mut queue_x: VecDeque<String> = VecDeque::from(inputs.clone());
@@ -339,7 +343,9 @@ pub fn compute_states(graph_ctx: &GraphContext, ctx: &ComputeCtx) -> usize {
     set_y_count
 }
 
-pub fn generate_script_cache(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
+pub fn check_all_scripts(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
+    let inputs: Vec<String> = graph_ctx.all_inputs();
+
     let all_node_name = {
         let graph = graph_ctx.graph.lock().unwrap();
         graph
@@ -349,22 +355,19 @@ pub fn generate_script_cache(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
             .collect::<Vec<String>>()
     };
 
-    for name in tqdm::tqdm(all_node_name.iter()) {
-        let mut node_info = graph_ctx
-            .graph
-            .lock()
-            .unwrap()
-            .get_node(name.to_string())
-            .unwrap()
-            .attributes
-            .as_ref()
-            .unwrap()
-            .clone();
+    let all_node_name = vec!["groth16_verifier_MSM_msm0_0"];
+
+    for name in all_node_name.iter() {
+        let node_info = graph_ctx.get_node_info(name);
+
+        /*
         if node_info.cached_script.is_some() {
             debug!("script cache already exists for {}", name);
             continue;
         }
-        let states = node_info
+        */
+
+        let states: Vec<_> = node_info
             .predecessor
             .iter()
             .map(|x| {
@@ -375,7 +378,31 @@ pub fn generate_script_cache(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
                 state
             })
             .collect();
-        let (script, witness) = (node_info.script_fn)(ctx, states);
+
+        let (script, witness) = (node_info.script_fn)(ctx, states.clone());
+
+        let mut input = witness;
+        for state in states.iter() {
+            input.append(&mut state.to_witness())
+        }
+        let expect_output = node_info.state.to_witness();
+
+        let exec_info = execute_script_with_inputs(script, input);
+        let output = execute_info_to_witness(&exec_info);
+        if output != expect_output {
+            log::error!(
+                "{} mismatch: {:?}, output: {:?}, expected: {:?}",
+                name,
+                exec_info,
+                output,
+                expect_output
+            );
+        } else {
+            log::info!("{} passed", name);
+        }
+
+        /*
+        TODO: cache it somewhare?
         let (script_len, witness_len) =
             (script.len(), witness.iter().fold(0, |sum, x| sum + x.len()));
         let script_bytes = script.compile().to_bytes();
@@ -387,17 +414,19 @@ pub fn generate_script_cache(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
 
         // update state
         node_info.cached_script = Some(script_cache);
+        */
+
         // prepare new node outside of mutable borrow
         let new_node = BitVMNode::new_node(name.to_string(), node_info);
         graph_ctx.graph.lock().unwrap().add_node(new_node);
     }
 }
 
-pub fn load_script_cache() {
+pub fn load_script_cache_from_file() {
     todo! {}
 }
 
-pub fn save_script_cache() {
+pub fn save_script_cache_to_file() {
     todo! {}
 }
 
@@ -415,8 +444,6 @@ pub fn graph_partition(
             .map(|x| x.to_string())
             .collect()
     };
-
-    
 
     todo!()
 }

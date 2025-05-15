@@ -12,6 +12,7 @@ use ark_ff::BigInt;
 
 #[derive(Debug, Clone)]
 pub enum Hint {
+    CheckValid(bool),
     Fq(ark_bn254::Fq),
     Fr(ark_bn254::Fr),
     Fq2(ark_bn254::Fq2),
@@ -68,6 +69,9 @@ impl Hint {
             },
             Hint::BigIntegerTmulLC4(a) => script! {
                 { T2::push_u32_le(&bigint_to_u32_limbs(a.clone(), T4::N_BITS)) }
+            },
+            Hint::CheckValid(valid) => script! {
+                if *valid { OP_TRUE } else { OP_FALSE }
             },
         }
     }
