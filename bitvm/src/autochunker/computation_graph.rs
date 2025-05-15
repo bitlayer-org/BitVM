@@ -405,6 +405,18 @@ pub fn graph_partition(
     graph_ctx: &GraphContext,
     ctx: &ComputeCtx,
 ) -> (Vec<BitVMGraph>, Vec<BitVMGraph>) {
-    let mut graph = graph_ctx.graph.lock().unwrap();
+    let inputs: Vec<String> = {
+        let graph = graph_ctx.graph.lock().unwrap();
+
+        graph
+            .get_all_node_names()
+            .into_iter()
+            .filter(|x| graph.get_node_in_degree(x.to_string()).unwrap() == 0)
+            .map(|x| x.to_string())
+            .collect()
+    };
+
+    
+
     todo!()
 }

@@ -3,6 +3,8 @@ use ark_ec::models::bn::Bn;
 use ark_ec::pairing::Pairing;
 use paste::paste;
 
+use crate::bn254::utils::Hint;
+
 pub type G1 = <Bn<ark_bn254::Config> as Pairing>::G1Affine;
 pub type CheckValid = bool;
 const U254_BYTES: usize = 4 * 9;
@@ -45,7 +47,7 @@ macro_rules! basic_functions {
 }
 
 macro_rules! impl_state_functions {
-    ($($state_type:ident, $fq_count:expr, $bit_cost:expr);*) => {
+    ($($state_type:ident, $fq_count:expr, $bit_cost:expr, $to_witness_func:expr);*) => {
         paste!{
         impl State {
             $(
@@ -57,6 +59,14 @@ macro_rules! impl_state_functions {
                 match self {
                     $(State::$state_type(Some(_)) => true,)*
                     _ => false,
+                }
+            }
+
+            #[allow(unused)]
+            pub fn to_hint(&self) -> Hint {
+                match self {
+                    $(State::$state_type(Some(x)) => $to_witness_func(x),)*
+                    _ => panic!("to_witness unexpected state"),
                 }
             }
 
@@ -100,10 +110,18 @@ macro_rules! impl_state_functions {
 // Implement the basic functions for each state type
 // (Type, number of Fq elements, bit commitment cost)
 impl_state_functions! {
-    Fq, 1, 6788;
-    G1, 2, 13196;
-    Fq2, 2, 13196;
-    Fr, 1, 6788;
-    Fq6, 6, 123;
-    CheckValid, 0, 0
+    Fq, 1, 6788, |x: &Fq| Hint::Fq(*x);
+    G1, 2, 13196, |x: &G1| Hint::G1(*x);
+    Fq2, 2, 13196, |x: &Fq2| Hint::Fq2(*x);
+    Fr, 1, 6788, |x: &Fr| Hint::Fr(*x);
+    Fq6, 6, 123, |x: &Fq6| Hint::Fq6(*x);
+    CheckValid, 0, 0, |x: &CheckValid| {
+        let mut bytes = vec![0; 1];
+        if *x {
+            bytes[0] = 1;
+        } else {
+            bytes[0] = 0;
+        }
+        bytes
+    }
 }

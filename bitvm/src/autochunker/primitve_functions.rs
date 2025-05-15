@@ -1,8 +1,9 @@
 use crate::autochunker::{compute_ctx::*, intermediate_state::*, proof::RawProof};
 use crate::bn254::ell_coeffs::{AffinePairing, BnAffinePairing};
 use crate::bn254::fp254impl::Fp254Impl;
-use crate::bn254::fq2::Fq2;
+use crate::bn254::msm::{dfs_with_constant_mul, get_query_for_table_index};
 use crate::bn254::utils::fq_to_bits;
+use crate::chunk;
 use crate::groth16::constants::LAMBDA;
 use crate::groth16::offchain_checker::compute_c_wi;
 use ark_bn254::Fq6Config;
@@ -16,6 +17,11 @@ use core::ops::Neg;
 use log::{debug, error, info, warn};
 use num_bigint::BigUint;
 use std::sync::Arc;
+
+use crate::bn254::fq::Fq as ScriptFq;
+use crate::bn254::fq12::Fq12 as ScriptFq12;
+use crate::bn254::fq2::Fq2 as ScriptFq2;
+use crate::bn254::fq6::Fq6 as ScriptFq6;
 
 pub fn placeholder_script_fn() -> ScriptFn {
     let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
@@ -35,7 +41,7 @@ pub fn msm_initial(window: usize) -> (ComputeFn, ScriptFn) {
         assert!(inputs.len() == 1);
 
         // get the scalar and base
-        let scalar = inputs[index].get_fr();
+        let scalar = inputs[0].get_fr();
         let base: G1Affine = compute_ctx
             .msm_points_from_pk
             .get(index)
@@ -58,7 +64,39 @@ pub fn msm_initial(window: usize) -> (ComputeFn, ScriptFn) {
         State::G1(Some((compute_ctx.vky0 + window_result).into_affine()))
     };
 
-    (Box::new(func), placeholder_script_fn())
+    let script_func =
+        move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+            let scalar = inputs[0].get_fr();
+            let base: G1Affine = compute_ctx
+                .msm_points_from_pk
+                .get(index)
+                .expect("at least one public input")
+                .clone();
+
+            let (_scalar_slice, scalar_slice_script) =
+                get_query_for_table_index(scalar, window, chunk_index);
+
+            let doubling_factor = BigUint::one() << (chunk_index * window); // (2^(w.i))
+            let doubled_base = (base * ark_bn254::Fr::from(doubling_factor)).into_affine(); // (2^(w.i) P)
+
+            let mut p_mul: Vec<ark_bn254::G1Affine> = Vec::new();
+            p_mul.push(ark_bn254::G1Affine::zero()); // [a_0] (2^(w.i) P)
+            for _ in 1..(1 << window) {
+                let entry = (*p_mul.last().unwrap() + doubled_base).into_affine(); // [a_i] (2^(w.i) P)
+                p_mul.push(entry);
+            }
+            let table_script = dfs_with_constant_mul(0, (window - 1) as u32, 0, &p_mul);
+
+            (
+                script! {
+                    {scalar_slice_script}
+                    {table_script}
+                },
+                vec![],
+            )
+        };
+
+    (Box::new(func), Box::new(script_func))
 }
 
 pub fn windows_of_mul_table(window: usize) -> usize {
@@ -555,8 +593,15 @@ pub fn constant_line_eval_c1(
 }
 
 mod tests {
-    use crate::autochunker::{primitve_functions::ComputeCtx, proof::RawProof};
-    use ark_bn254::{Fq, Fq2, Fq6};
+    use crate::{
+        autochunker::{
+            intermediate_state::State,
+            primitve_functions::{msm_initial, ComputeCtx},
+            proof::RawProof,
+        },
+        execute_script_with_inputs,
+    };
+    use ark_bn254::{Fq, Fq2, Fq6, Fr};
     use core::ops::Neg;
     use log::info;
 
@@ -574,5 +619,21 @@ mod tests {
         assert_eq!(c1.neg(), neg.c1);
         assert_eq!(c2.neg(), neg.c2);
         info!("time elapsed: {:?}", now.elapsed());
+    }
+
+    #[test_log::test]
+    fn test_msm_initial() {
+        let raw_proof = RawProof::mock_proof();
+        let compute_ctx: ComputeCtx = raw_proof.into();
+
+        let inputs = vec![State::Fr(Some(Fr::from(100)))];
+        let windows_size = 8;
+
+        let compute_fn = msm_initial(windows_size).0;
+        let script_fn = msm_initial(windows_size).1;
+
+        let state = compute_fn(&compute_ctx, inputs.clone());
+        let (script, witness) = script_fn(&compute_ctx, inputs.clone());
+        let exec_info = execute_script_with_inputs(script, witness);
     }
 }

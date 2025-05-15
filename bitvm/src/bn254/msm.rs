@@ -142,7 +142,7 @@ fn generate_lookup_tables(
 // the corresponding row of a table.
 // The index of slice of scalar i.e {a_i} and the index of tables (chunks) i.e {(2^2wi P)} match
 // Output is a value and a script to generate that value from a scalar
-fn get_query_for_table_index(
+pub fn get_query_for_table_index(
     scalar: ark_bn254::Fr,
     window: usize,
     table_index: usize,

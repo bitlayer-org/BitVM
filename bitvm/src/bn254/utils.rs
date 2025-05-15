@@ -2,7 +2,11 @@ use crate::bigint::BigIntImpl;
 use crate::bigint::U256;
 use crate::bn254::fq::bigint_to_u32_limbs;
 use crate::bn254::fq::Fq;
+use crate::bn254::fq12::Fq12;
+use crate::bn254::fq2::Fq2;
+use crate::bn254::fq6::Fq6;
 use crate::bn254::fr::Fr;
+use crate::bn254::g1::G1Affine;
 use crate::treepp::*;
 use ark_ff::BigInt;
 
@@ -10,6 +14,10 @@ use ark_ff::BigInt;
 pub enum Hint {
     Fq(ark_bn254::Fq),
     Fr(ark_bn254::Fr),
+    Fq2(ark_bn254::Fq2),
+    Fq6(ark_bn254::Fq6),
+    Fq12(ark_bn254::Fq12),
+    G1(ark_bn254::G1Affine),
     Hash([u32; U256::N_LIMBS as usize]),
     U256(num_bigint::BigInt),
     BigIntegerTmulLC1(num_bigint::BigInt),
@@ -26,6 +34,18 @@ impl Hint {
         pub type T2 = BigIntImpl<{ K2.0 }, { K2.1 }>;
         pub type T4 = BigIntImpl<{ K4.0 }, { K4.1 }>;
         match self {
+            Hint::G1(g1) => script! {
+                { G1Affine::push(*g1) }
+            },
+            Hint::Fq12(fq12) => script! {
+                { Fq12::push(*fq12) }
+            },
+            Hint::Fq6(fq6) => script! {
+                { Fq6::push(*fq6) }
+            },
+            Hint::Fq2(fq2) => script! {
+                { Fq2::push(*fq2) }
+            },
             Hint::Fq(fq) => script! {
                 { Fq::push(*fq) }
             },
