@@ -120,10 +120,23 @@ impl_state_functions! {
 
 impl State {
     #[allow(unused)]
-    pub fn to_witness(&self) -> Vec<Vec<u8>> {
-        let exec_info = execute_script(self.to_hint().push());
-        execute_info_to_witness(&exec_info)
+    pub fn to_witness(&self) -> Vec<Vec<u8>> { hint_to_witness(&self.to_hint()) }
+}
+
+// helper function to convert a hint to witness
+pub fn hint_to_witness(hint: &Hint) -> Vec<Vec<u8>> {
+    let exec_info = execute_script(hint.push());
+    execute_info_to_witness(&exec_info)
+}
+
+// helper function to convert hints to witness
+pub fn hints_to_witness(hints: &[Hint]) -> Vec<Vec<u8>> {
+    let mut witness = Vec::new();
+    for hint in hints {
+        let exec_info = execute_script(hint.push());
+        witness.extend(execute_info_to_witness(&exec_info));
     }
+    witness
 }
 
 // helper function to convert a script to witness

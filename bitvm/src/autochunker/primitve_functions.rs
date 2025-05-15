@@ -60,6 +60,10 @@ pub fn msm_initial(window: usize) -> (ComputeFn, ScriptFn) {
 
         // doubled based + current windows' result
         let doubled_base = (base * Fr::from(1 << (chunk_index * window))).into_affine(); // (2^(w.i) P)
+        debug!(
+            "slice: {:?}, doubled_base: {:?}",
+            scalar_chunks[chunk_index], doubled_base
+        );
         let window_result = (doubled_base * Fr::from(scalar_chunks[chunk_index])).into_affine();
 
         State::G1(Some((compute_ctx.vky0 + window_result).into_affine()))
@@ -74,11 +78,14 @@ pub fn msm_initial(window: usize) -> (ComputeFn, ScriptFn) {
                 .expect("at least one public input")
                 .clone();
 
-            let (_scalar_slice, scalar_slice_script) =
+            let (scalar_slice, scalar_slice_script) =
                 get_query_for_table_index(scalar, window, chunk_index);
 
-            let doubling_factor = BigUint::one() << (chunk_index * window); // (2^(w.i))
-            let doubled_base = (base * ark_bn254::Fr::from(doubling_factor)).into_affine(); // (2^(w.i) P)
+            let doubled_base = (base * Fr::from(1 << (chunk_index * window))).into_affine(); // (2^(w.i) P)
+            debug!(
+                "scalar slice: {:?}, double_base: {:?}",
+                scalar_slice, doubled_base
+            );
 
             let mut p_mul: Vec<ark_bn254::G1Affine> = Vec::new();
             p_mul.push(ark_bn254::G1Affine::zero()); // [a_0] (2^(w.i) P)
@@ -86,14 +93,18 @@ pub fn msm_initial(window: usize) -> (ComputeFn, ScriptFn) {
                 let entry = (*p_mul.last().unwrap() + doubled_base).into_affine(); // [a_i] (2^(w.i) P)
                 p_mul.push(entry);
             }
+            let window_result = (doubled_base * Fr::from(scalar_slice)).into_affine();
             let table_script = dfs_with_constant_mul(0, (window - 1) as u32, 0, &p_mul);
-
+            let (add_script, add_hints) =
+                crate::bn254::g1::G1Affine::hinted_check_add(window_result, compute_ctx.vky0);
             (
                 script! {
                     {scalar_slice_script}
                     {table_script}
+                    {crate::bn254::g1::G1Affine::push(compute_ctx.vky0)}
+                    {add_script}
                 },
-                vec![],
+                hints_to_witness(&add_hints),
             )
         };
 

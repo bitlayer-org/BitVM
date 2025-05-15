@@ -391,11 +391,12 @@ pub fn check_all_scripts(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
         let output = execute_info_to_witness(&exec_info);
         if output != expect_output {
             log::error!(
-                "{} mismatch: {:?}, output: {:?}, expected: {:?}",
+                "{} mismatch: {:?}, output: {:?}, expected: {:?}, expected_state: {:?}",
                 name,
                 exec_info,
                 output,
-                expect_output
+                expect_output,
+                node_info.state,
             );
         } else {
             log::info!("{} passed", name);
