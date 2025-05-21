@@ -296,7 +296,12 @@ pub fn fq2_mul_nonresidue() -> (ComputeFn, ScriptFn) {
             let b = a * Fq6Config::NONRESIDUE;
             State::Fq2(Some(b))
         }),
-        placeholder_script_fn(),
+        Box::new(
+            |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+                let script = crate::bn254::fq6::Fq6::mul_fq2_by_nonresidue();
+                (script, vec![])
+            },
+        ),
     )
 }
 
