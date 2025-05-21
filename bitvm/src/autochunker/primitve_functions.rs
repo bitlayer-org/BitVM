@@ -446,7 +446,12 @@ pub fn fq2_div2() -> (ComputeFn, ScriptFn) {
         let c0_tweak = c0 / Fq2::from(2);
         State::Fq2(Some(c0_tweak))
     };
-    (Box::new(func), placeholder_script_fn())
+    let script_fn = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        assert!(inputs.len() == 1);
+        let script = crate::bn254::fq2::Fq2::div2();
+        (script, vec![])
+    };
+    (Box::new(func), Box::new(script_fn))
 }
 
 pub fn check_fq2_equal() -> (ComputeFn, ScriptFn) {
