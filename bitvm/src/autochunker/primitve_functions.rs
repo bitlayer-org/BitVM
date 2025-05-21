@@ -353,7 +353,14 @@ pub fn fq2_mul() -> (ComputeFn, ScriptFn) {
             let c = a * b;
             State::Fq2(Some(c))
         }),
-        placeholder_script_fn(),
+        Box::new(
+            |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+                let a = inputs[0].get_fq2();
+                let b = inputs[1].get_fq2();
+                let (script, hints) = crate::bn254::fq2::Fq2::hinted_mul(2, a, 0, b);
+                (script, hints_to_witness(&hints))
+            },
+        ),
     )
 }
 
