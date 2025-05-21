@@ -149,6 +149,46 @@ pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn,
         State::G1(Some((window_result + msm_acc).into_affine()))
     };
 
+    let script_fn = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        let msm_acc = inputs[1].get_g1();
+        let scalar = inputs[0].get_fr();
+        let base: G1Affine = compute_ctx
+            .msm_points_from_pk
+            .get(index)
+            .expect("at least one public input")
+            .clone();
+
+        let (scalar_slice, scalar_slice_script) =
+            get_query_for_table_index(scalar, window, chunk_index);
+
+        let doubled_base =
+            (base * Fr::from(BigUint::one() << (chunk_index * window))).into_affine(); // (2^(w.i) P)
+        debug!(
+            "scalar slice: {:?}, double_base: {:?}",
+            scalar_slice, doubled_base
+        );
+
+        let mut p_mul: Vec<ark_bn254::G1Affine> = Vec::new();
+        p_mul.push(ark_bn254::G1Affine::zero()); // [a_0] (2^(w.i) P)
+        for _ in 1..(1 << window) {
+            let entry = (*p_mul.last().unwrap() + doubled_base).into_affine(); // [a_i] (2^(w.i) P)
+            p_mul.push(entry);
+        }
+        let window_result = (doubled_base * Fr::from(scalar_slice)).into_affine();
+        let table_script = dfs_with_constant_mul(0, (window - 1) as u32, 0, &p_mul);
+        let (add_script, add_hints) =
+            crate::bn254::g1::G1Affine::hinted_check_add(window_result, msm_acc);
+        (
+            script! {
+                {scalar_slice_script}
+                {table_script}
+                {crate::bn254::g1::G1Affine::push(msm_acc)}
+                {add_script}
+            },
+            hints_to_witness(&add_hints),
+        )
+    };
+
     (Box::new(func), placeholder_script_fn())
 }
 
