@@ -523,7 +523,14 @@ pub fn fq2_conjugate() -> (ComputeFn, ScriptFn) {
         fq2.conjugate_in_place();
         State::Fq2(Some(fq2))
     };
-    (Box::new(func), placeholder_script_fn())
+    let script_fn = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        assert_eq!(inputs.len(), 1);
+        let script = script! {
+            {crate::bn254::fq::Fq::neg(0)}
+        };
+        (script, vec![])
+    };
+    (Box::new(func), Box::new(script_fn))
 }
 
 pub fn fq2_frobinus_map(power: usize) -> (ComputeFn, ScriptFn) {

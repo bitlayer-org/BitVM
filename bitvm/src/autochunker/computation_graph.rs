@@ -373,6 +373,7 @@ pub fn check_all_scripts(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
         "groth16_verifier_Pairing_ate_loop_63_square_f__check0",
         "groth16_verifier_final_q4_2p_new_x",
         "groth16_verifier_Pairing_ate_loop_64_square_f_a^2_s0",
+        "groth16_verifier_final_q4_p_q4x_con",
     ];
 
     for name in all_node_name.iter() {
