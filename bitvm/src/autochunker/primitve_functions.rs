@@ -776,7 +776,27 @@ pub fn nonconstant_line_evaluate_c0(selector: Selector) -> (ComputeFn, ScriptFn)
         // evaluate the point by the line (divisor)
         State::Fq2(Some(c0))
     };
-    (Box::new(func), placeholder_script_fn())
+    let script_fn = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        assert_eq!(inputs.len(), 2);
+        let lambda = inputs[0].get_fq2();
+        let p4 = inputs[1].get_g1();
+
+        let (mul_c0_script, mul_c0_hint) =
+            crate::bn254::fq::Fq::hinted_mul(3, lambda.c0, 0, p4.x().unwrap());
+        let (mul_c1_script, mul_c1_hint) =
+            crate::bn254::fq::Fq::hinted_mul(2, lambda.c1, 1, p4.x().unwrap());
+        (
+            script! {
+                {crate::bn254::fq::Fq::drop()} // remove p4.y
+                {crate::bn254::fq::Fq::copy(0)} // [c0, c1, p4x, p4x]
+
+                {mul_c0_script}
+                {mul_c1_script}
+            },
+            hints_to_witness(&vec![mul_c0_hint, mul_c1_hint].concat()),
+        )
+    };
+    (Box::new(func), Box::new(script_fn))
 }
 
 pub fn nonconstant_line_evaluate_c1(selector: Selector) -> (ComputeFn, ScriptFn) {
