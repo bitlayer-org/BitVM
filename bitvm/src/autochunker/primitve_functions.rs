@@ -629,7 +629,23 @@ pub fn double_tangent_line_y() -> (ComputeFn, ScriptFn) {
         State::Fq2(Some(t4y_new))
     };
 
-    (Box::new(func), placeholder_script_fn())
+    let script_fn = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        assert_eq!(inputs.len(), 3);
+        let t4x_new = inputs[0].get_fq2();
+        let lambda = inputs[1].get_fq2();
+
+        let (mul_script, mul_hint) = crate::bn254::fq2::Fq2::hinted_mul(2, lambda, 4, t4x_new);
+        (
+            script! {
+                {mul_script}
+                {crate::bn254::fq2::Fq2::add(0, 2)}
+                {crate::bn254::fq2::Fq2::neg(0)}
+            },
+            hints_to_witness(&mul_hint),
+        )
+    };
+
+    (Box::new(func), Box::new(script_fn))
 }
 
 // inputs: t4x, lambda
