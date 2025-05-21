@@ -479,7 +479,14 @@ pub fn fq2_mul_by_constant(x: Fq2) -> (ComputeFn, ScriptFn) {
             let b = a * x;
             State::Fq2(Some(b))
         }),
-        placeholder_script_fn(),
+        Box::new(
+            move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+                assert!(inputs.len() == 1);
+                let a = inputs[0].get_fq2();
+                let (script, hint) = crate::bn254::fq2::Fq2::hinted_mul_by_constant(a, &x);
+                (script, hints_to_witness(&hint))
+            },
+        ),
     )
 }
 
