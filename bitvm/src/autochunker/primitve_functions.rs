@@ -462,7 +462,12 @@ pub fn check_fq2_equal() -> (ComputeFn, ScriptFn) {
             let b = inputs[1].get_fq2();
             State::CheckValid(Some(a == b))
         }),
-        placeholder_script_fn(),
+        Box::new(
+            |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+                let script = crate::bn254::fq2::Fq2::equal();
+                (script, vec![])
+            },
+        ),
     )
 }
 
