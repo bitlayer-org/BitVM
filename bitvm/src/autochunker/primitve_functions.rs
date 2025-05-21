@@ -726,7 +726,35 @@ pub fn check_slope_of_tangent_line() -> (ComputeFn, ScriptFn) {
             Fq2::from(3) * t4x.square() == Fq2::from(2) * t4y * lambda,
         ))
     };
-    (Box::new(func), placeholder_script_fn())
+
+    let script_fn = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        assert_eq!(inputs.len(), 3);
+        let t4x = inputs[0].get_fq2();
+        let t4y = inputs[1].get_fq2();
+        let lambda = inputs[2].get_fq2();
+
+        let (mul_script, mul_hint) = crate::bn254::fq2::Fq2::hinted_mul(0, lambda, 2, t4y);
+        let (square_script, square_hint) = crate::bn254::fq2::Fq2::hinted_square(t4x);
+        let hints = vec![mul_hint, square_hint].concat();
+        (
+            script! {
+                {mul_script}
+                {crate::bn254::fq2::Fq2::double(0)}
+                {crate::bn254::fq2::Fq2::toaltstack()}
+
+                {square_script}
+                {crate::bn254::fq2::Fq2::copy(0)}
+                {crate::bn254::fq2::Fq2::double(0)}
+                {crate::bn254::fq2::Fq2::add(0, 2)}
+
+                {crate::bn254::fq2::Fq2::fromaltstack()}
+                {crate::bn254::fq2::Fq2::equal()}
+            },
+            hints_to_witness(&hints),
+        )
+    };
+
+    (Box::new(func), Box::new(script_fn))
 }
 
 pub fn nonconstant_line_evaluate_c0(selector: Selector) -> (ComputeFn, ScriptFn) {
