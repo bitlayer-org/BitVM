@@ -12,7 +12,7 @@ use ark_ec::bn::BnConfig;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{AdditiveGroup, Field, One, PrimeField};
 use ark_ff::{Fp6Config, MontFp};
-use bitcoin::witness;
+use bitcoin::{pow, witness};
 use bitcoin_script::{script, Script};
 use core::ops::Neg;
 use log::{debug, error, info, warn};
@@ -541,7 +541,13 @@ pub fn fq2_frobinus_map(power: usize) -> (ComputeFn, ScriptFn) {
         let y = x.frobenius_map(power);
         State::Fq2(Some(y))
     };
-    (Box::new(func), placeholder_script_fn())
+    let script_fn = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        assert_eq!(inputs.len(), 1);
+        let x = inputs[0].get_fq2();
+        let (script, hints) = crate::bn254::fq2::Fq2::hinted_frobenius_map(power, x);
+        (script, hints_to_witness(&hints))
+    };
+    (Box::new(func), Box::new(script_fn))
 }
 
 pub const BETA32: Fq2 = Fq2::new(
