@@ -412,7 +412,12 @@ pub fn fq2_neg() -> (ComputeFn, ScriptFn) {
             let b = a.neg();
             State::Fq2(Some(b))
         }),
-        placeholder_script_fn(),
+        Box::new(
+            |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+                let script = crate::bn254::fq2::Fq2::neg(0);
+                (script, vec![])
+            },
+        ),
     )
 }
 
