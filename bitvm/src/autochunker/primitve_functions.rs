@@ -392,7 +392,15 @@ pub fn fq2_sub2() -> (ComputeFn, ScriptFn) {
             let d = a - b - c;
             State::Fq2(Some(d))
         }),
-        placeholder_script_fn(),
+        Box::new(
+            |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+                let script = script! {
+                    {crate::bn254::fq2::Fq2::sub(4, 2)}
+                    {crate::bn254::fq2::Fq2::sub(0, 2)}
+                };
+                (script, vec![])
+            },
+        ),
     )
 }
 
