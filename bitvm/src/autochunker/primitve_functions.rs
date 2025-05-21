@@ -494,7 +494,7 @@ pub fn fq2_mul_by_integer(i: i32) -> (ComputeFn, ScriptFn) {
     assert!(i < 10, "mul_by_constant, {} too large", i);
     assert!(i > -10, "mul_by_constant, {} too small", i);
     let x = Fq2::from(i);
-    fq2_mul_by_constant(x)
+    fq2_mul_by_constant(x) // optimize to sequence of double add operations
 }
 
 pub fn fq2_square() -> (ComputeFn, ScriptFn) {
@@ -505,7 +505,14 @@ pub fn fq2_square() -> (ComputeFn, ScriptFn) {
             let b = a.square();
             State::Fq2(Some(b))
         }),
-        placeholder_script_fn(),
+        Box::new(
+            |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+                assert!(inputs.len() == 1);
+                let a = inputs[0].get_fq2();
+                let (script, hint) = crate::bn254::fq2::Fq2::hinted_square(a);
+                (script, hints_to_witness(&hint))
+            },
+        ),
     )
 }
 
