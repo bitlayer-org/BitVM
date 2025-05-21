@@ -313,7 +313,16 @@ pub fn fq2_plus_one() -> (ComputeFn, ScriptFn) {
             let b = a + Fq2::from(1);
             State::Fq2(Some(b))
         }),
-        placeholder_script_fn(),
+        Box::new(
+            |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+                let add_script = crate::bn254::fq2::Fq2::add(0, 2);
+                let script = script! {
+                    {crate::bn254::fq2::Fq2::push(Fq2::from(1))}
+                    {add_script}
+                };
+                (script, vec![])
+            },
+        ),
     )
 }
 
