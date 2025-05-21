@@ -381,6 +381,7 @@ pub fn check_all_scripts(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
         "groth16_verifier_Pairing_ate_loop_63_double_t4__check_line_through_point",
         "groth16_verifier_Pairing_ate_loop_63_double_t4__check_slope_of_line",
         "groth16_verifier_Pairing_ate_loop_62_double_t4_c0",
+        "groth16_verifier_Pairing_ate_loop_62_double_t4_c1",
     ];
 
     for name in all_node_name.iter() {
