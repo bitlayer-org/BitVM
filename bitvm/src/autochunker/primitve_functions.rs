@@ -180,16 +180,21 @@ pub fn msm_steps(index: usize, chunk_index: usize, window: usize) -> (ComputeFn,
             crate::bn254::g1::G1Affine::hinted_check_add(window_result, msm_acc);
         (
             script! {
+                {crate::bn254::fq::Fq::toaltstack()}
+                {crate::bn254::fq::Fq::toaltstack()}
+
                 {scalar_slice_script}
                 {table_script}
-                {crate::bn254::g1::G1Affine::push(msm_acc)}
+
+                {crate::bn254::fq::Fq::fromaltstack()}
+                {crate::bn254::fq::Fq::fromaltstack()}
                 {add_script}
             },
             hints_to_witness(&add_hints),
         )
     };
 
-    (Box::new(func), placeholder_script_fn())
+    (Box::new(func), Box::new(script_fn))
 }
 
 pub fn scalar_valid() -> (ComputeFn, ScriptFn) {

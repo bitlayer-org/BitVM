@@ -355,7 +355,10 @@ pub fn check_all_scripts(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
             .collect::<Vec<String>>()
     };
 
-    let all_node_name = vec!["groth16_verifier_MSM_msm0_0"];
+    let all_node_name = vec![
+        "groth16_verifier_MSM_msm0_0",
+        "groth16_verifier_MSM_0_1_msm_acc",
+    ];
 
     for name in all_node_name.iter() {
         let node_info = graph_ctx.get_node_info(name);

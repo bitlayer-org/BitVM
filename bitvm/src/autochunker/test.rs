@@ -18,6 +18,7 @@ use log::info;
 use log::warn;
 use paste::paste;
 use rayon::prelude::*;
+use std::io::{Result, Write};
 
 #[test_log::test]
 fn main_test() {
@@ -433,6 +434,9 @@ fn main_test() {
     // check all states are valid
     show_all_states(&ctx);
 
+    // save varible names into file
+    save_varbile_names(&ctx);
+
     // check all Bitcoin scripts are valid
     check_all_scripts(&ctx, &compute_ctx);
 
@@ -529,4 +533,11 @@ pub fn show_all_states(ctx: &GraphContext) {
             }
         }
     }
+}
+
+pub fn save_varbile_names(ctx: &GraphContext) {
+    let lock_guard = ctx.graph.lock().unwrap();
+    let node_names = lock_guard.get_all_node_names();
+    let mut file = std::fs::File::create("varible_names.txt").unwrap();
+    writeln!(file, "{:?}", node_names).unwrap();
 }
