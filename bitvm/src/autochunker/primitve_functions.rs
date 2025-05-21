@@ -262,7 +262,29 @@ pub fn fq2_mul_lc4() -> (ComputeFn, ScriptFn) {
             let result = a * b + c * d;
             State::Fq2(Some(result))
         }),
-        placeholder_script_fn(),
+        Box::new(
+            |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+                let (script, hints) = crate::bn254::fq2::Fq2::hinted_mul_lc4_keep_elements(
+                    inputs[0].get_fq2(),
+                    inputs[1].get_fq2(),
+                    inputs[2].get_fq2(),
+                    inputs[3].get_fq2(),
+                );
+                (
+                    script! {
+                        {script}
+
+                        // clear stack
+                        {crate::bn254::fq2::Fq2::toaltstack()}
+                        for _ in 0..4 {
+                            {crate::bn254::fq2::Fq2::drop()}
+                        }
+                        {crate::bn254::fq2::Fq2::fromaltstack()}
+                    },
+                    hints_to_witness(&hints),
+                )
+            },
+        ),
     )
 }
 
