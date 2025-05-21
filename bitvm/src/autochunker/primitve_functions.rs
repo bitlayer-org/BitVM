@@ -904,6 +904,7 @@ pub fn constant_line_eval_c1(
     is_neg: bool,
     is_double: bool,
 ) -> (ComputeFn, ScriptFn) {
+    let script_selector = selector.clone();
     let func = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> State {
         assert_eq!(inputs.len(), 1);
         let p_point = inputs[0].get_g1();
@@ -927,7 +928,38 @@ pub fn constant_line_eval_c1(
         // evaluate the point by the line (divisor)
         State::Fq2(Some(c1))
     };
-    (Box::new(func), placeholder_script_fn())
+    let script_fn = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        assert_eq!(inputs.len(), 1);
+        let p_point = inputs[0].get_g1();
+
+        let (_, v) = if is_double {
+            double_line(compute_ctx, script_selector.clone())
+        } else {
+            add_line(compute_ctx, script_selector.clone(), is_neg)
+        };
+
+        let v_neg = v.neg();
+        let (mul_c0_script, mul_c0_hint) =
+            crate::bn254::fq::Fq::hinted_mul(1, v_neg.c0, 2, p_point.y().unwrap());
+        let (mul_c1_script, mul_c1_hint) =
+            crate::bn254::fq::Fq::hinted_mul(1, v_neg.c1, 2, p_point.y().unwrap());
+
+        let script = script! {
+            {crate::bn254::fq::Fq::toaltstack()}
+            {crate::bn254::fq::Fq::drop()} // remove p_point.x
+            {crate::bn254::fq::Fq::fromaltstack()}
+            {crate::bn254::fq::Fq::copy(0)} // [p_point.y, p_point.y]
+            {crate::bn254::fq2::Fq2::push(v_neg)} // [p_point.y, p_point.y, c0, c1]
+            {mul_c0_script} // [p_point.y, c1, c0']
+            {mul_c1_script} // [c0', c1']
+        };
+
+        (
+            script,
+            hints_to_witness(&vec![mul_c0_hint, mul_c1_hint].concat()),
+        )
+    };
+    (Box::new(func), Box::new(script_fn))
 }
 
 mod tests {
