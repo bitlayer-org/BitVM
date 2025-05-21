@@ -660,7 +660,21 @@ pub fn double_tangent_line_x() -> (ComputeFn, ScriptFn) {
         State::Fq2(Some(t4x_new))
     };
 
-    (Box::new(func), placeholder_script_fn())
+    let script_fn = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        assert_eq!(inputs.len(), 2);
+        let lambda = inputs[1].get_fq2();
+        let (square_script, square_hint) = crate::bn254::fq2::Fq2::hinted_square(lambda);
+        (
+            script! {
+                {square_script}
+                {crate::bn254::fq2::Fq2::double(2)}
+                {crate::bn254::fq2::Fq2::sub(2, 0)}
+            },
+            hints_to_witness(&square_hint),
+        )
+    };
+
+    (Box::new(func), Box::new(script_fn))
 }
 
 // inputs: t4x, t4y, lambda, v
