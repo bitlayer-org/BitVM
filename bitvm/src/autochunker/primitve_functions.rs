@@ -694,7 +694,24 @@ pub fn check_line_through_point(selector: Selector) -> (ComputeFn, ScriptFn) {
         // check if t4y = t4x * lambda + v
         State::CheckValid(Some(t4y == t4x * lambda + v))
     };
-    (Box::new(func), placeholder_script_fn())
+    let script_fn = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        assert_eq!(inputs.len(), 4);
+        let t4x = inputs[0].get_fq2();
+        let t4y = inputs[1].get_fq2();
+        let lambda = inputs[2].get_fq2();
+        let v = inputs[3].get_fq2();
+
+        let (mul_script, mul_hint) = crate::bn254::fq2::Fq2::hinted_mul(2, lambda, 6, t4x);
+        (
+            script! {
+                {mul_script}
+                {crate::bn254::fq2::Fq2::add(0, 2)}
+                {crate::bn254::fq2::Fq2::equal()}
+            },
+            hints_to_witness(&mul_hint),
+        )
+    };
+    (Box::new(func), Box::new(script_fn))
 }
 
 pub fn check_slope_of_tangent_line() -> (ComputeFn, ScriptFn) {
