@@ -358,6 +358,7 @@ pub fn check_all_scripts(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
     let all_node_name = vec![
         "groth16_verifier_MSM_msm0_0",
         "groth16_verifier_MSM_0_1_msm_acc",
+        "groth16_verifier_p3_tweak",
     ];
 
     for name in all_node_name.iter() {

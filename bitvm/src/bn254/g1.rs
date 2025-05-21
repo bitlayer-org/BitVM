@@ -516,7 +516,7 @@ pub fn hinted_from_eval_points(p: ark_bn254::G1Affine) -> (Script, Vec<Hint>) {
     };
 
     hints.push(Hint::Fq(py_inv));
-    hints.extend(hint1);
+    // hints.extend(hint1);
     hints.extend(hint2);
 
     (script, hints)

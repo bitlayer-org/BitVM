@@ -228,7 +228,13 @@ pub fn tweak_point() -> (ComputeFn, ScriptFn) {
         };
         State::G1(Some(tweak_point))
     };
-    (Box::new(func), placeholder_script_fn())
+    let script_fn = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        assert_eq!(inputs.len(), 1);
+        let point = inputs[0].get_g1();
+        let (script, hints) = crate::bn254::g1::hinted_from_eval_points(point.clone());
+        (script, hints_to_witness(&hints))
+    };
+    (Box::new(func), Box::new(script_fn))
 }
 
 pub fn neg_fq2() -> (ComputeFn, ScriptFn) {
