@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 use tqdm::refresh;
 pub type BitVMGraph = Arc<Mutex<Graph<String, NodeInfo>>>;
 use super::compute_ctx::{ComputeCtx, ScriptFn};
+use rand::Rng;
 
 // Define the `define_script` macro
 #[macro_export]
@@ -84,6 +85,18 @@ pub struct NodeInfo {
     pub predecessor: Vec<String>,
     // cached scripts' info, either load from cache or generate from `script_fn`
     pub cached_script: Option<ScriptCache>,
+    // partition id, used for partitioning
+    pub partition_id: u64,
+}
+
+// partition-related information
+impl NodeInfo {
+    pub fn set_partition(&mut self, partition_id: u64) { self.partition_id = partition_id; }
+    pub fn get_partition(&self) -> u64 { self.partition_id }
+    pub fn random_partition_id() -> u64 {
+        let mut rng = rand::thread_rng();
+        rng.gen_range(0..u64::MAX)
+    }
 }
 
 #[derive(Clone)]
@@ -141,6 +154,7 @@ pub fn new_input(
         function: Arc::new(compute_fn),
         predecessor: vec![],
         cached_script: None,
+        partition_id: 0,
     };
     let node = BitVMNode::new_node(name, node_info);
     graph.lock().unwrap().add_node(node.clone());
@@ -162,6 +176,7 @@ pub fn new_script<'a>(
         function: Arc::new(compute_fn),
         predecessor,
         cached_script: None,
+        partition_id: 0,
     };
     let node = BitVMNode::new_node(name.clone(), node_info);
     graph.lock().unwrap().add_node(node.clone());
@@ -250,6 +265,16 @@ impl GraphContext {
             .get_all_node_names()
             .into_iter()
             .map(|x| x.to_string())
+            .collect()
+    }
+
+    pub fn get_neighbor_nodes(&self, name: &str) -> Vec<BitVMNode> {
+        let graph = self.graph.lock().unwrap();
+        graph
+            .get_neighbor_nodes(name.to_string())
+            .unwrap()
+            .into_iter()
+            .map(|x| x.clone())
             .collect()
     }
 }
@@ -399,25 +424,6 @@ pub fn check_all_scripts(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
         } else {
             log::debug!("{} passed", name);
         }
-
-        /*
-        TODO: cache it somewhare?
-        let (script_len, witness_len) =
-            (script.len(), witness.iter().fold(0, |sum, x| sum + x.len()));
-        let script_bytes = script.compile().to_bytes();
-        let script_cache = ScriptCache {
-            script_len,
-            witness_size: witness_len,
-            script: script_bytes,
-        };
-
-        // update state
-        node_info.cached_script = Some(script_cache);
-        */
-
-        // prepare new node outside of mutable borrow
-        let new_node = BitVMNode::new_node(name.to_string(), node_info);
-        graph_ctx.graph.lock().unwrap().add_node(new_node);
     }
 }
 
@@ -432,20 +438,21 @@ pub fn save_script_cache_to_file() {
 pub fn graph_partition(
     graph_ctx: &GraphContext,
     ctx: &ComputeCtx,
+    threshold: usize, // count as bytes
 ) -> (Vec<BitVMGraph>, Vec<BitVMGraph>) {
     let inputs: Vec<String> = graph_ctx.all_inputs();
     let all_node_name = graph_ctx.get_all_nodes_name();
 
     // remove inputs from all_node_name
-    let node_names_check_list: Vec<String> = all_node_name
+    let non_input_nodes: Vec<String> = all_node_name
         .into_iter()
         .filter(|x| !inputs.contains(x))
         .collect();
 
     let mut all_scripts_bytes = 0;
 
-    for name in tqdm::tqdm(node_names_check_list.iter()).desc(Some("check all scripts")) {
-        let node_info = graph_ctx.get_node_info(name);
+    for name in tqdm::tqdm(non_input_nodes.iter()).desc(Some("check all scripts")) {
+        let mut node_info = graph_ctx.get_node_info(name);
         let states: Vec<_> = node_info
             .predecessor
             .iter()
@@ -460,8 +467,76 @@ pub fn graph_partition(
 
         let (script, witness) = (node_info.script_fn)(ctx, states.clone());
         all_scripts_bytes += script.len();
+
+        let (script_len, witness_len) =
+            (script.len(), witness.iter().fold(0, |sum, x| sum + x.len()));
+        let script_bytes = script.compile().to_bytes();
+        let script_cache = ScriptCache {
+            script_len,
+            witness_size: witness_len,
+            script: script_bytes,
+        };
+
+        // update state
+        node_info.cached_script = Some(script_cache);
+        // prepare new node outside of mutable borrow
+        let new_node = BitVMNode::new_node(name.to_string(), node_info);
+        graph_ctx.graph.lock().unwrap().add_node(new_node);
     }
-    info!("total script bytes: {}", all_scripts_bytes);
+    info!("total script bytes: {}", all_scripts_bytes); // 1479731830 for now
+
+    // greedy partition
+    // 1. mark all inputs are a partition, because all inputs should be shown as the first level of multisecion
+    let inputs_partition_id = NodeInfo::random_partition_id();
+    for name in inputs {
+        let mut node_info = graph_ctx.get_node_info(&name);
+        node_info.set_partition(inputs_partition_id);
+        let new_node = BitVMNode::new_node(name.to_string(), node_info);
+        graph_ctx.graph.lock().unwrap().add_node(new_node);
+    }
+
+    // 2. mark all nodes as individual partition
+    let mut partitions: HashMap<u64, (usize, Vec<&str>)> = HashMap::new();
+    for name in non_input_nodes.iter() {
+        let mut node_info = graph_ctx.get_node_info(name);
+        let id = NodeInfo::random_partition_id();
+        node_info.set_partition(id);
+        partitions.insert(
+            id,
+            (
+                node_info.cached_script.as_ref().unwrap().script_len,
+                vec![name],
+            ),
+        );
+        let new_node = BitVMNode::new_node(name.to_string(), node_info);
+        graph_ctx.graph.lock().unwrap().add_node(new_node);
+    }
+
+    // 3. go through all nodes multiple times, and merge the partition if the size of partition is less than threshold
+    for name in non_input_nodes.iter() {
+        let mut node_info = graph_ctx.get_node_info(name);
+        let neighbor_nodes = graph_ctx.get_neighbor_nodes(name);
+        for neighbor in neighbor_nodes {
+            let mut neighbor_node_info = graph_ctx.get_node_info(&neighbor.name);
+
+            if neighbor_node_info.partition_id == inputs_partition_id {
+                continue; // skip the inputs
+            }
+
+            // Will it exceed the threshold if we merge this node to neighbor's partition
+
+            // how much bytes wil be increased if adding current node to neighbor's partition
+
+            // how much bytes will be increased if removing current node from current's partition
+
+            // try to add current node to this neighbor
+            let new_partition_id = node_info.partition_id;
+            neighbor_node_info.set_partition(new_partition_id);
+            let new_node = BitVMNode::new_node(neighbor.name.to_string(), neighbor_node_info);
+            graph_ctx.graph.lock().unwrap().add_node(new_node);
+        }
+        // select best partition to join or do nothing
+    }
 
     todo!()
 }

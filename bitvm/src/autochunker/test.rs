@@ -441,7 +441,7 @@ fn main_test() {
     // check_all_scripts(&ctx, &compute_ctx); // will take 2.5 minutes to check
 
     // merge and organize scripts
-    graph_partition(&ctx, &compute_ctx);
+    graph_partition(&ctx, &compute_ctx, 20_000_000);
 
     // query state
     {
