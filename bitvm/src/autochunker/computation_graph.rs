@@ -243,6 +243,15 @@ impl GraphContext {
             .map(|x| x.to_string())
             .collect()
     }
+
+    pub fn get_all_nodes_name(&self) -> Vec<String> {
+        let graph = self.graph.lock().unwrap();
+        graph
+            .get_all_node_names()
+            .into_iter()
+            .map(|x| x.to_string())
+            .collect()
+    }
 }
 
 // return all states that have been computed
@@ -345,65 +354,17 @@ pub fn compute_states(graph_ctx: &GraphContext, ctx: &ComputeCtx) -> usize {
 
 pub fn check_all_scripts(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
     let inputs: Vec<String> = graph_ctx.all_inputs();
-    let all_node_name = {
-        let graph = graph_ctx.graph.lock().unwrap();
-        graph
-            .get_all_node_names()
-            .iter()
-            .map(|x| x.to_string())
-            .collect::<Vec<String>>()
-    };
+    let all_node_name = graph_ctx.get_all_nodes_name();
 
     // remove inputs from all_node_name
-    let all_node_name: Vec<String> = all_node_name
+    let node_names_check_list: Vec<String> = all_node_name
         .into_iter()
         .filter(|x| !inputs.contains(x))
         .collect();
 
-    /*
-    let all_node_name = vec![
-        "groth16_verifier_MSM_msm0_0",
-        "groth16_verifier_MSM_0_1_msm_acc",
-        "groth16_verifier_p3_tweak",
-        "groth16_verifier_c_inv0",
-        "groth16_verifier_Pairing_ate_loop_58_add_eval_k0",
-        "groth16_verifier_Pairing_ate_loop_58_add_multi_v2_tweak",
-        "groth16_verifier_Pairing_ate_loop_57_square_f_r0",
-        "groth16_verifier_Pairing_ate_loop_57_double_multi_ab0",
-        "groth16_verifier_Pairing_ate_loop_57_double_multi_axb_v0",
-        "groth16_verifier_Pairing_ate_loop_56_square_f_a^2_a_sub",
-        "groth16_verifier_Pairing_ate_loop_56_square_f_a^2_c2",
-        "groth16_verifier_q4y_neg",
-        "groth16_verifier_Pairing_ate_loop_64_square_f_cxr_c0_tweak",
-        "groth16_verifier_Pairing_ate_loop_63_square_f_a^2_t4",
-        "groth16_verifier_Pairing_ate_loop_63_square_f__check0",
-        "groth16_verifier_final_q4_2p_new_x",
-        "groth16_verifier_Pairing_ate_loop_64_square_f_a^2_s0",
-        "groth16_verifier_final_q4_p_q4x_con",
-        "groth16_verifier_final_p_frob_c0",
-        "groth16_verifier_final_frob_t4_new_t4x",
-        "groth16_verifier_Pairing_ate_loop_64_double_t4_new_t4y",
-        "groth16_verifier_Pairing_ate_loop_64_add_t4_new_t4x",
-        "groth16_verifier_Pairing_ate_loop_63_double_t4__check_line_through_point",
-        "groth16_verifier_Pairing_ate_loop_63_double_t4__check_slope_of_line",
-        "groth16_verifier_Pairing_ate_loop_62_double_t4_c0",
-        "groth16_verifier_Pairing_ate_loop_62_double_t4_c1",
-        "groth16_verifier_Pairing_ate_loop_62_double_t2_t3_t3_c0",
-        "groth16_verifier_Pairing_ate_loop_62_double_t2_t3_t3_c1",
-    ];
-    */
-
     // will take around 2.5 minutes to finish
-    for name in tqdm::tqdm(all_node_name.iter()).desc(Some("check all scripts")) {
+    for name in tqdm::tqdm(node_names_check_list.iter()).desc(Some("check all scripts")) {
         let node_info = graph_ctx.get_node_info(name);
-
-        /*
-        if node_info.cached_script.is_some() {
-            debug!("script cache already exists for {}", name);
-            continue;
-        }
-        */
-
         let states: Vec<_> = node_info
             .predecessor
             .iter()
@@ -472,16 +433,35 @@ pub fn graph_partition(
     graph_ctx: &GraphContext,
     ctx: &ComputeCtx,
 ) -> (Vec<BitVMGraph>, Vec<BitVMGraph>) {
-    let inputs: Vec<String> = {
-        let graph = graph_ctx.graph.lock().unwrap();
+    let inputs: Vec<String> = graph_ctx.all_inputs();
+    let all_node_name = graph_ctx.get_all_nodes_name();
 
-        graph
-            .get_all_node_names()
-            .into_iter()
-            .filter(|x| graph.get_node_in_degree(x.to_string()).unwrap() == 0)
-            .map(|x| x.to_string())
-            .collect()
-    };
+    // remove inputs from all_node_name
+    let node_names_check_list: Vec<String> = all_node_name
+        .into_iter()
+        .filter(|x| !inputs.contains(x))
+        .collect();
+
+    let mut all_scripts_bytes = 0;
+
+    for name in tqdm::tqdm(node_names_check_list.iter()).desc(Some("check all scripts")) {
+        let node_info = graph_ctx.get_node_info(name);
+        let states: Vec<_> = node_info
+            .predecessor
+            .iter()
+            .map(|x| {
+                let state = graph_ctx.get_state(x);
+                if !state.is_filled() {
+                    panic!("state {} is not filled", x);
+                }
+                state
+            })
+            .collect();
+
+        let (script, witness) = (node_info.script_fn)(ctx, states.clone());
+        all_scripts_bytes += script.len();
+    }
+    info!("total script bytes: {}", all_scripts_bytes);
 
     todo!()
 }
