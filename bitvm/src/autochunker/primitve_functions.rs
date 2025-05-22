@@ -202,8 +202,15 @@ pub fn scalar_valid() -> (ComputeFn, ScriptFn) {
         assert_eq!(inputs.len(), 1);
         State::CheckValid(Some(true))
     };
-    // TODO: check valid of scalar from script
-    (Box::new(func), placeholder_script_fn())
+    let script_fn = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        assert_eq!(inputs.len(), 1);
+        let script = script! {
+            { crate::bn254::fq::Fq::push_hex(crate::bn254::fq::Fq::MODULUS) }
+            { crate::bigint::U254::lessthan(1, 0) }
+        };
+        (script, vec![])
+    };
+    (Box::new(func), Box::new(script_fn))
 }
 
 // check validation of a G1 point
@@ -212,8 +219,14 @@ pub fn check_g1_point() -> (ComputeFn, ScriptFn) {
         assert_eq!(inputs.len(), 1);
         State::CheckValid(Some(true))
     };
-    // TODO: check valid of scalar from script
-    (Box::new(func), placeholder_script_fn())
+    let script_fn = move |compute_ctx: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+        assert_eq!(inputs.len(), 1);
+        let point = inputs[0].get_g1();
+        let (script, hints) =
+            crate::bn254::g1::G1Affine::hinted_is_on_curve(point.x().unwrap(), point.y().unwrap());
+        (script, hints_to_witness(&hints))
+    };
+    (Box::new(func), Box::new(script_fn))
 }
 
 // for the optimization of line evaluation

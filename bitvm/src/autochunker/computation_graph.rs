@@ -345,7 +345,6 @@ pub fn compute_states(graph_ctx: &GraphContext, ctx: &ComputeCtx) -> usize {
 
 pub fn check_all_scripts(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
     let inputs: Vec<String> = graph_ctx.all_inputs();
-
     let all_node_name = {
         let graph = graph_ctx.graph.lock().unwrap();
         graph
@@ -355,6 +354,13 @@ pub fn check_all_scripts(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
             .collect::<Vec<String>>()
     };
 
+    // remove inputs from all_node_name
+    let all_node_name: Vec<String> = all_node_name
+        .into_iter()
+        .filter(|x| !inputs.contains(x))
+        .collect();
+
+    /*
     let all_node_name = vec![
         "groth16_verifier_MSM_msm0_0",
         "groth16_verifier_MSM_0_1_msm_acc",
@@ -385,8 +391,10 @@ pub fn check_all_scripts(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
         "groth16_verifier_Pairing_ate_loop_62_double_t2_t3_t3_c0",
         "groth16_verifier_Pairing_ate_loop_62_double_t2_t3_t3_c1",
     ];
+    */
 
-    for name in all_node_name.iter() {
+    // will take around 2.5 minutes to finish
+    for name in tqdm::tqdm(all_node_name.iter()).desc(Some("check all scripts")) {
         let node_info = graph_ctx.get_node_info(name);
 
         /*
@@ -428,7 +436,7 @@ pub fn check_all_scripts(graph_ctx: &GraphContext, ctx: &ComputeCtx) {
                 node_info.state,
             );
         } else {
-            log::info!("{} passed", name);
+            log::debug!("{} passed", name);
         }
 
         /*
