@@ -5,7 +5,7 @@ use crate::{
     treepp::*,
 };
 use hash_utils::{
-    hash_fp2, hash_fp6, hash_g2acc, hash_g2acc_with_hash_t, hash_g2acc_with_hashed_le,
+    hash_fp2, hash_fp6, hash_g2, hash_g2acc, hash_g2acc_with_hash_t, hash_g2acc_with_hashed_le,
 };
 
 /// Number of bits that are used for WOTS signing.
@@ -91,6 +91,10 @@ pub(crate) mod hash_utils {
             }
         });
         SCRIPT.clone()
+    }
+
+    pub(crate) fn hash_g2() -> Script {
+        hash_fp4()
     }
 
     /// Compute hash of top six field elements on stack: [a00, a01,.., a60, a61]
@@ -221,18 +225,32 @@ pub fn hash_messages(elem_types: Vec<ElementType>) -> Script {
 
         // hash remaining element
         let elem_type = elem_types[msg_index];
-        let hash_scr = script! {
-            if elem_type == ElementType::Fp6 {
-                {hash_fp6()}
-            } else if elem_type == ElementType::G1 {
-                {hash_fp2()}
-            } else if elem_type == ElementType::G2EvalPoint {
-                {hash_g2acc_with_hashed_le()}
-            } else if elem_type == ElementType::G2EvalMul {
-                {hash_g2acc_with_hash_t()}
-            } else if elem_type == ElementType::G2Eval {
-                {hash_g2acc()}
+        let hash_scr = if elem_type == ElementType::Fp6 {
+            {
+                hash_fp6()
             }
+        } else if elem_type == ElementType::G1 {
+            {
+                hash_fp2()
+            }
+        } else if elem_type == ElementType::G2EvalPoint {
+            {
+                hash_g2acc_with_hashed_le()
+            }
+        } else if elem_type == ElementType::G2EvalMul {
+            {
+                hash_g2acc_with_hash_t()
+            }
+        } else if elem_type == ElementType::G2Eval {
+            {
+                hash_g2acc()
+            }
+        } else if elem_type == ElementType::G2 {
+            {
+                hash_g2()
+            }
+        } else {
+            panic!("unknown ElementType for hashing: {:?}", elem_type);
         };
 
         let verify_scr = script! {

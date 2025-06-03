@@ -10,6 +10,7 @@ use crate::chunk::g16_runner_core::groth16_generate_segments;
 use crate::chunk::g16_runner_core::InputProof;
 use crate::chunk::g16_runner_core::InputProofRaw;
 use crate::chunk::g16_runner_core::PublicParams;
+use crate::execute_script_buf_without_stack_limit;
 use crate::groth16::offchain_checker::compute_c_wi;
 use crate::treepp::Script;
 use ark_bn254::Bn254;
@@ -407,11 +408,19 @@ fn utils_execute_chunked_g16(
             .clone()
             .push_script(disprove_scripts[tap_script_index].clone());
         println!("idx: {}, total length: {}", i, total_script.len());
-        let exec_result = execute_script(total_script);
+        let exec_result = execute_script_buf_without_stack_limit(total_script.compile());
         if exec_result.final_stack.len() > 1 {
             for i in 0..exec_result.final_stack.len() {
                 println!("{i:} {:?}", exec_result.final_stack.get(i));
             }
+            println!(
+                "exec status: {:?}, last_opcode: {:?}, stack: {:?}, alt stack: {:?}, remaining script: {}",
+                exec_result.stats,
+                exec_result.last_opcode,
+                exec_result.final_stack,
+                exec_result.alt_stack,
+                exec_result.remaining_script[..100].to_string(),
+            );
         }
         if !exec_result.success {
             if exec_result.final_stack.len() != 1 {

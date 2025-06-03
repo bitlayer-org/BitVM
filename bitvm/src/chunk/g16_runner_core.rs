@@ -199,7 +199,8 @@ pub(crate) fn groth16_generate_segments(
             &p2,
             t2,
             None,
-        );
+        )[0]
+        .clone();
         push_compare_or_return!(t4);
         (t2, t3) = ((t2 + t2).into_affine(), (t3 + t3).into_affine());
 
@@ -237,7 +238,8 @@ pub(crate) fn groth16_generate_segments(
             &p2,
             t2,
             Some(pubs.q2),
-        );
+        )[0]
+        .clone();
         push_compare_or_return!(t4);
         if ate == 1 {
             (t2, t3) = ((t2 + pubs.q2).into_affine(), (t3 + pubs.q3).into_affine());
@@ -274,7 +276,7 @@ pub(crate) fn groth16_generate_segments(
     f_acc = wrap_hints_dense_dense_mul(skip_evaluation, all_output_hints.len(), &f_acc, &cp3);
     push_compare_or_return!(f_acc);
 
-    t4 = wrap_chunk_point_ops_and_multiply_line_evals_step_1(
+    let results = wrap_chunk_point_ops_and_multiply_line_evals_step_1(
         skip_evaluation,
         all_output_hints.len(),
         false,
@@ -290,6 +292,9 @@ pub(crate) fn groth16_generate_segments(
         t2,
         Some(pubs.q2),
     );
+    t4 = results[1].clone();
+    let side_segment = results[0].clone();
+    push_compare_or_return!(side_segment);
     push_compare_or_return!(t4);
 
     let tmp_q2f = frob_q_power(pubs.q2, 1);
@@ -321,7 +326,8 @@ pub(crate) fn groth16_generate_segments(
         &p2,
         t2,
         Some(pubs.q2),
-    );
+    )[0]
+    .clone();
     push_compare_or_return!(t4);
 
     let lev = wrap_chunk_point_ops_and_multiply_line_evals_step_2(
@@ -842,7 +848,7 @@ mod test {
                 ts[i] = (t + t).into_affine();
             }
             (t4, _, temp_scr, _) = chunk_point_ops_and_multiply_line_evals_step_1(
-                true, None, None, t4, ps[2], None, ps[1], t3, None, ps[0], t2, None,
+                true, None, None, t4, ps[2], None, ps[1], t3, None, ps[0], t2, None, false,
             );
             total_script_size += temp_scr.len();
 
@@ -904,6 +910,7 @@ mod test {
                     ps[0],
                     t2,
                     Some(qs[0]),
+                    false,
                 );
                 total_script_size += temp_scr.len();
 
@@ -984,6 +991,7 @@ mod test {
             ps[0],
             t2,
             Some(qs[0]),
+            false,
         );
         total_script_size += temp_scr.len();
 
@@ -1035,6 +1043,7 @@ mod test {
             ps[0],
             t2,
             Some(qs[0]),
+            false,
         );
         total_script_size += temp_scr.len();
 

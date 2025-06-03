@@ -76,6 +76,7 @@ pub struct ExecuteInfo {
     pub success: bool,
     pub error: Option<ExecError>,
     pub final_stack: FmtStack,
+    pub alt_stack: FmtStack,
     pub remaining_script: String,
     pub last_opcode: Option<Opcode>,
     pub stats: ExecStats,
@@ -106,6 +107,12 @@ impl fmt::Display for ExecuteInfo {
                 Some(width) => {
                     writeln!(f, "Final Stack: {:width$}", self.final_stack, width = width)?
                 }
+            }
+        }
+        if !self.alt_stack.is_empty() {
+            match f.width() {
+                None => writeln!(f, "Alt Stack: {:4}", self.alt_stack)?,
+                Some(width) => writeln!(f, "Alt Stack: {:width$}", self.alt_stack, width = width)?,
             }
         }
         if let Some(ref opcode) = self.last_opcode {
@@ -172,6 +179,7 @@ fn execute_script_buf_optional_stack_limit(
         error: res.error.clone(),
         last_opcode: res.opcode,
         final_stack: FmtStack(exec.stack().clone()),
+        alt_stack: FmtStack(exec.altstack().clone()),
         remaining_script: exec.remaining_script().to_asm_string(),
         stats: exec.stats().clone(),
     }
@@ -232,6 +240,7 @@ pub fn dry_run_taproot_input(
         error: res.error.clone(),
         last_opcode: res.opcode,
         final_stack: FmtStack(exec.stack().clone()),
+        alt_stack: FmtStack(exec.altstack().clone()),
         remaining_script: exec.remaining_script().to_asm_string(),
         stats: exec.stats().clone(),
     };
@@ -322,7 +331,7 @@ pub fn execute_raw_script_with_inputs(script: Vec<u8>, witness: Vec<Vec<u8>>) ->
         error: res.error.clone(),
         last_opcode: res.opcode,
         final_stack: FmtStack(exec.stack().clone()),
-        // alt_stack: FmtStack(exec.altstack().clone()),
+        alt_stack: FmtStack(exec.altstack().clone()),
         remaining_script: exec.remaining_script().to_owned().to_asm_string(),
         stats: exec.stats().clone(),
     };

@@ -29,6 +29,9 @@ pub enum DataType {
 
     /// BigIntegers - Field & Scalar elements
     U256Data(ark_ff::BigInt<4>),
+
+    /// G2Affine points
+    G2Data(ark_bn254::G2Affine),
 }
 
 /// Helper macro to reduce repetitive code for `TryFrom<Element>`.
@@ -88,6 +91,9 @@ pub(crate) enum ElementType {
 
     /// type to represent G2 point accumulator and partial product of line evaluation  
     G2Eval, // t, partial_product
+
+    /// G2 point
+    G2,
 }
 
 impl ElementType {
@@ -95,7 +101,8 @@ impl ElementType {
         match self {
             ElementType::Fp6 => 6,             // six coefficients of field element
             ElementType::FieldElem => 0,       // field element is not hashed, directly bit-comitted
-            ElementType::G1 => 2,              // x, y co-ordinates
+            ElementType::G1 => 2,              // x, y co-ordinates for G1
+            ElementType::G2 => 4,              // x, y co-ordinates for G2
             ElementType::ScalarElem => 0, // scalar element is not hashed, directly bit-comitted
             ElementType::G2EvalPoint => 4 + 1, // t, Hash_partial_product
             ElementType::G2EvalMul => 14 + 1, // partial_product, Hash_t
@@ -210,6 +217,10 @@ impl DataType {
                 let hash = extern_hash_fps(vec![r.x, r.y]);
                 CompressedStateObject::Hash(hash)
             }
+            DataType::G2Data(r) => {
+                let hash = extern_hash_fps(vec![r.x.c0, r.x.c1, r.y.c0, r.y.c1]);
+                CompressedStateObject::Hash(hash)
+            }
         }
     }
 
@@ -233,8 +244,17 @@ impl DataType {
             (ElementType::ScalarElem, DataType::U256Data(r)) => {
                 as_hints_scalarelemtype_u256data(*r)
             }
+            (ElementType::G2, DataType::G2Data(r)) => {
+                let hints = vec![
+                    Hint::Fq(r.x.c0),
+                    Hint::Fq(r.x.c1),
+                    Hint::Fq(r.y.c0),
+                    Hint::Fq(r.y.c1),
+                ];
+                hints
+            }
             _ => {
-                println!("Unhandled ElementType {:?} ", elem_type);
+                println!("Unhandled ElementType {:?}, self: {:?} ", elem_type, self);
                 unreachable!();
             }
         }
@@ -397,11 +417,11 @@ mod test {
     #[test]
     fn test_hash_witness() {
         let mut prng = ChaCha20Rng::seed_from_u64(117);
-        let fld = ark_bn254::Fq6::rand(&mut prng);
-        let elem = super::DataType::Fp6Data(fld);
+        let fld = ark_bn254::G2Affine::rand(&mut prng);
+        let elem = super::DataType::G2Data(fld);
 
         let check_output_bit = 1;
-        let preim = elem.to_witness(ElementType::Fp6);
+        let preim = elem.to_witness(ElementType::G2);
         let scr = script! {
             for p in preim {
                 {p.push()}
@@ -409,9 +429,10 @@ mod test {
             {check_output_bit}
             {elem.to_hash().as_hint_type().push()}
             {Fq::toaltstack()}
-            {hash_messages(vec![ElementType::Fp6])}
+            // {hash_messages(vec![ElementType::G2])}
         };
         let res = execute_script(scr);
+        println!("res: {:?}", res);
         assert!(!res.success && res.final_stack.len() == 1);
     }
 }

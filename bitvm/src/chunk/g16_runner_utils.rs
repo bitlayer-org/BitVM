@@ -14,7 +14,7 @@ use super::{
     taps_msm::chunk_hash_p,
     taps_mul::{chunk_dense_dense_mul, chunk_fq12_square},
     taps_point_ops::{
-        chunk_init_t4, chunk_point_ops_and_multiply_line_evals_step_1,
+        chunk_init_t4, chunk_mul_q_by_char, chunk_point_ops_and_multiply_line_evals_step_1,
         chunk_point_ops_and_multiply_line_evals_step_2,
     },
 };
@@ -58,6 +58,7 @@ pub enum ScriptType {
     PreMillerHashP,
 
     MillerSquaring,
+    MulQByChar,
     MillerPointOpsStep1(bool, Option<i8>, Option<bool>),
     MillerPointOpsStep2,
     FoldedFp12Multiply,
@@ -196,9 +197,9 @@ pub(crate) fn wrap_hints_frob_fp12(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn wrap_chunk_point_ops_and_multiply_line_evals_step_1(
     skip: bool,
-    segment_id: usize,
+    mut segment_id: usize,
     is_dbl: bool,
-    is_frob: Option<bool>,
+    mut is_frob: Option<bool>,
     ate_bit: Option<i8>,
     in_t4: &Segment,
     in_p4: &Segment,
@@ -209,7 +210,9 @@ pub(crate) fn wrap_chunk_point_ops_and_multiply_line_evals_step_1(
     in_p2: &Segment,
     t2: ark_bn254::G2Affine,
     q2: Option<ark_bn254::G2Affine>,
-) -> Segment {
+) -> Vec<Segment> {
+    let mut segments = vec![];
+
     let mut input_segment_info: Vec<(SegmentID, ElementType)> = vec![
         (in_p2.id, ElementType::G1),
         (in_p3.id, ElementType::G1),
@@ -224,7 +227,7 @@ pub(crate) fn wrap_chunk_point_ops_and_multiply_line_evals_step_1(
     let mut q4: Option<ark_bn254::G2Affine> = None;
 
     if !is_dbl {
-        let in_q4 = in_q4.unwrap();
+        let in_q4 = in_q4.as_ref().unwrap();
         for v in in_q4.iter().rev() {
             input_segment_info.push((v.id, ElementType::FieldElem))
         }
@@ -239,15 +242,60 @@ pub(crate) fn wrap_chunk_point_ops_and_multiply_line_evals_step_1(
         ));
     }
 
+    let mut is_side_segment = false;
+
+    if is_frob == Some(true) && ate_bit == Some(1) {
+        // create another segment to amortize
+        let (is_valid_input, result, hints, script) = chunk_mul_q_by_char(q4.unwrap());
+        let char_q4 = Segment {
+            id: (segment_id) as u32,
+            is_valid_input: is_valid_input,
+            parameter_ids: in_q4
+                .as_ref()
+                .unwrap()
+                .iter()
+                .rev()
+                .map(|x| (x.id, ElementType::FieldElem))
+                .collect(),
+            result: (DataType::G2Data(result.clone()), ElementType::G2),
+            hints: hints,
+            scr_type: ScriptType::MulQByChar,
+            scr: script.compile(),
+        };
+        segments.push(char_q4.clone());
+
+        // push parameters and q4
+        for _ in in_q4.iter() {
+            input_segment_info.pop(); // remove the last one, it is already added
+        }
+        input_segment_info.push((char_q4.id, ElementType::G2));
+        segment_id += 1;
+        is_frob = Some(false);
+        q4 = Some(result);
+        is_side_segment = true; // this is a side segment
+    }
+
     let (mut dbladd, mut is_valid_input, mut scr, mut op_hints) =
         (ElemG2Eval::mock(), true, script! {}, vec![]);
     if !skip {
         (dbladd, is_valid_input, scr, op_hints) = chunk_point_ops_and_multiply_line_evals_step_1(
-            is_dbl, is_frob, ate_bit, t4, p4, q4, p3, t3, q3, p2, t2, q2,
+            is_dbl,
+            is_frob,
+            ate_bit,
+            t4,
+            p4,
+            q4,
+            p3,
+            t3,
+            q3,
+            p2,
+            t2,
+            q2,
+            is_side_segment,
         );
     }
 
-    Segment {
+    segments.push(Segment {
         id: segment_id as u32,
         is_valid_input,
         parameter_ids: input_segment_info,
@@ -255,7 +303,8 @@ pub(crate) fn wrap_chunk_point_ops_and_multiply_line_evals_step_1(
         hints: op_hints,
         scr_type: ScriptType::MillerPointOpsStep1(is_dbl, ate_bit, is_frob),
         scr: scr.compile(),
-    }
+    });
+    segments
 }
 
 // complete

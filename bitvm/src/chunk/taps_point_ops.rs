@@ -624,6 +624,7 @@ pub(crate) fn chunk_point_ops_and_multiply_line_evals_step_1(
     p2: ark_bn254::G1Affine,
     t2: ark_bn254::G2Affine,
     q2: Option<ark_bn254::G2Affine>,
+    is_side_segment: bool,
 ) -> (ElemG2Eval, bool, Script, Vec<Hint>) {
     let (hint_out, is_valid, ops_scr, hints) = point_ops_and_multiply_line_evals_step_1(
         is_dbl, is_frob, ate_bit, t4.t, p4, q4, p3, t3, q3, p2, t2, q2,
@@ -632,13 +633,27 @@ pub(crate) fn chunk_point_ops_and_multiply_line_evals_step_1(
         // [t4, p4, p3, p2, nt4, F, 0/1] [outhash, p2hash, p3hash, p4hash, in_t4hash, ht4_le]
         {Fq::fromaltstack()}
         {9} OP_ROLL OP_TOALTSTACK
-        // [t4, p4, p3, p2, nt4, F, ht4_le] [outhash, p3hash, p4hash, in_t4hash,  0/1]
+        // [t4, p4, p3, p2, nt4, F, ht4_le] [outhash, p2hash, p3hash, p4hash, in_t4hash, 0/1]
         for _ in 0..(2+2+2+4+14) {
             {Fq::roll(24)}
         }
-        // [t4, ht4_le, p4, p3, p2, nt4, F] [outhash, p3hash, p4hash, in_t4hash, 0/1]
+        // [t4, ht4_le, p4, p3, p2, nt4, F] [outhash, p2hash, p3hash, p4hash, in_t4hash, 0/1]
         OP_FROMALTSTACK
-        // [t4, ht4_le, p4, p3, p2, nt4, F, 0/1] [outhash, p3hash, p4hash, in_t4hash]
+        // [t4, ht4_le, p4, p3, p2, nt4, F, 0/1] [outhash, p2hash, p3hash, p4hash, in_t4hash]
+
+        if is_side_segment { // use a side segment to avoid big disprove script
+            OP_RETURN
+            // [t4, ht4_le, p4, p3, p2, nt4, F, 0/1] [outhash, p2hash, p3hash, p4hash, in_t4hash, q4hash q4]
+            {G2Affine::fromaltstack()}
+            // [t4, ht4_le, p4, p3, p2, nt4, F, 0/1, q4] [outhash, p2hash, p3hash, p4hash, in_t4hash, q4hash]
+            {Fq::N_LIMBS * 4} OP_ROLL OP_TOALTSTACK
+            // [t4, ht4_le, p4, p3, p2, nt4, F, q4] [outhash, p2hash, p3hash, p4hash, in_t4hash, q4hash, 0/1]
+            for _ in 0..(4+1+2+2+2+4+14) {
+                {Fq::roll(4+1+2+2+2+4+14+4-1)}
+            }
+            OP_FROMALTSTACK
+            // [q4, t4, ht4_le, p4, p3, p2, nt4, F, 0/1] [outhash, q4hash, p2hash, p3hash, p4hash, in_t4hash]
+        }
     };
     let _hash_scr = script! {
         // [t4, ht4_le, p4, p3, nt4, fg] [outhash, p3hash, p4hash, in_t4hash]
@@ -649,9 +664,19 @@ pub(crate) fn chunk_point_ops_and_multiply_line_evals_step_1(
         // [hints, {t4, ht4_le}, p4, p3, p2] [outhash, p2hash, p3hash, p4hash, in_t4hash (q4)]
         if !is_dbl {
             // [hints, {t4, ht4_le}, p4, p3, p2] [outhash, p2hash, p3hash, p4hash, in_t4hash q4]
-            for _ in 0..4 {
-                {Fq::fromaltstack()} // q
+            if is_side_segment { // use a side segment to avoid big disprove script
+                // [hints, q4, {t4, ht4_le}, p4, p3, p2] [outhash, p2hash, p3hash, p4hash, in_t4hash q4hash]
+                for _ in 0..4 {
+                    {Fq::roll(14)}
+                }
+                { G2Affine::copy(0)} { G2Affine::toaltstack() } // copy and save to altstack
+                // [hints, {t4, ht4_le}, p4, p3, p2, q4]
+            } else {
+                for _ in 0..4 {
+                    {Fq::fromaltstack()} // q
+                }
             }
+
             // [hints, {t4, ht4_le}, p4, p3, p2, q4] [outhash, p2hash, p3hash, p4hash, in_t4hash]
             {Fq::roll(10)} {Fq::toaltstack()}
             // [hints, t4, p4, p3, p2, q4] [outhash, p2hash, p3hash, p4hash, in_t4hash, ht4_le]
@@ -675,6 +700,20 @@ pub(crate) fn chunk_point_ops_and_multiply_line_evals_step_1(
     };
 
     (hint_out, is_valid, scr, hints)
+}
+
+pub(crate) fn chunk_mul_q_by_char(
+    q: ark_bn254::G2Affine,
+) -> (bool, ark_bn254::G2Affine, Vec<Hint>, Script) {
+    let (result, script, hints) = hinted_mul_by_char_on_q(q);
+    let script = script! {
+        for _ in 0..4 {
+            {Fq::fromaltstack()} // q
+        }
+        {script}
+        {1}
+    };
+    (true, result, hints, script)
 }
 
 pub(crate) fn chunk_point_ops_and_multiply_line_evals_step_2(
@@ -1420,6 +1459,7 @@ mod test {
             p2,
             t2,
             Some(q2),
+            false,
         );
         assert!(is_valid_input);
 
@@ -1532,6 +1572,7 @@ mod test {
             p2,
             t2,
             Some(q2),
+            false,
         );
         assert!(is_valid_input);
 
@@ -1638,6 +1679,7 @@ mod test {
             p2,
             t2,
             Some(q2),
+            false,
         );
         assert!(is_valid_input);
 
@@ -1731,6 +1773,7 @@ mod test {
                 p2,
                 t2,
                 Some(q2),
+                false,
             );
         assert!(is_valid_input);
 
