@@ -11,6 +11,7 @@ use crate::chunk::g16_runner_core::InputProof;
 use crate::chunk::g16_runner_core::InputProofRaw;
 use crate::chunk::g16_runner_core::PublicParams;
 use crate::groth16::offchain_checker::compute_c_wi;
+use crate::signatures::winternitz;
 use crate::treepp::Script;
 use ark_bn254::Bn254;
 use ark_ec::bn::Bn;
@@ -439,6 +440,10 @@ fn utils_execute_chunked_g16(
     segments: &[Segment],
     disprove_scripts: &[ScriptBuf; NUM_TAPS],
 ) -> Option<(usize, Script)> {
+    fn scripts_to_witness_size(script: &Script) -> usize {
+        let res = execute_script(script.clone());
+        res.final_stack.0.iter_str().map(|x| x.len()).sum()
+    }
     let mut tap_script_index = 0;
     for i in 0..aux_hints.len() {
         if segments[i].scr_type == ScriptType::NonDeterministic {
@@ -450,9 +455,19 @@ fn utils_execute_chunked_g16(
             }
             {bc_hints[i].clone()}
         };
+        let witness_size = scripts_to_witness_size(&hint_script);
         let total_script = hint_script
             .clone()
             .push_script(disprove_scripts[tap_script_index].clone());
+        println!(
+            "executing script {}: tapindex {}, {:?}, len: {}, script size: {}, witness size: {}",
+            i,
+            tap_script_index,
+            segments[i].scr_type,
+            total_script.len(),
+            disprove_scripts[tap_script_index].len(),
+            witness_size,
+        );
         let exec_result = execute_script(total_script);
         if exec_result.final_stack.len() > 1 {
             for i in 0..exec_result.final_stack.len() {
