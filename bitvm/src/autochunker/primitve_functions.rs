@@ -505,9 +505,48 @@ pub fn fq2_mul_by_constant(x: Fq2) -> (ComputeFn, ScriptFn) {
 
 pub fn fq2_mul_by_integer(i: i32) -> (ComputeFn, ScriptFn) {
     assert!(i < 10, "mul_by_constant, {} too large", i);
-    assert!(i > -10, "mul_by_constant, {} too small", i);
+    assert!(i >= 1, "mul_by_constant, {} too small", i);
     let x = Fq2::from(i);
-    fq2_mul_by_constant(x) // optimize to sequence of double add operations
+    (
+        Box::new(move |_: &ComputeCtx, inputs: Vec<State>| {
+            assert!(inputs.len() == 1);
+            let a = inputs[0].get_fq2();
+            let b = a * Fq2::from(i);
+            State::Fq2(Some(b))
+        }),
+        Box::new(
+            move |_: &ComputeCtx, inputs: Vec<State>| -> (Script, Vec<Vec<u8>>) {
+                assert!(inputs.len() == 1);
+                // let bits = i.to_bits();
+                let bits = to_bits(i);
+                assert_eq!(bits.last().unwrap(), &1, "the last bit should be 1");
+                let script = script! {
+                    for bit in bits.into_iter().rev().skip(1).rev() {
+                        if bit == 1 {
+                            {crate::bn254::fq2::Fq2::copy(0)}
+                            {crate::bn254::fq2::Fq2::double(0)}
+                            {crate::bn254::fq2::Fq2::add(0, 2)}
+                        } else if bit == 0 {
+                            {crate::bn254::fq2::Fq2::double(0)}
+                        }
+                    }
+                };
+                (script, vec![])
+            },
+        ),
+    )
+}
+
+pub fn to_bits(i: i32) -> Vec<u8> {
+    assert!(i < 10, "to_bits, {} too large", i);
+    assert!(i >= 1, "to_bits, {} too small", i);
+    let mut bits = vec![];
+    let mut x = i;
+    while x > 0 {
+        bits.push((x % 2) as u8);
+        x /= 2;
+    }
+    bits
 }
 
 pub fn fq2_square() -> (ComputeFn, ScriptFn) {
