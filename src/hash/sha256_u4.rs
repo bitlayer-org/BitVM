@@ -312,7 +312,7 @@ pub fn sha256(num_bytes: u32) -> Script {
 
             if c > 0 {
                 //change and with xor
-                //TODO: if lookup table is pushed first and substracted
+                //TODO: if lookup table is pushed first and subtracted
                 // then we could avoid changing it  ~(32 * chunk)
                 { u4_drop_half_lookup() }
                 { u4_drop_half_and() }
